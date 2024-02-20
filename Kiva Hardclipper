@@ -1,4 +1,4 @@
-desc:Kiva hardclip
+desc:Kiva Hardclipper
 
 slider1:threshold=1<0,1>Threshold
 slider2:gain_db=0<-12,50,1>Makeup gain (dB)

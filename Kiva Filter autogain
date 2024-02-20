@@ -1,4 +1,4 @@
-desc:Kiva filter autogain
+desc:Kiva Filter autogain
 
 slider1:cutoff=0.1<0.1,1>Cutoff
 slider2:filter=0<0,1,1{Highpass,Lowpass}>Filter

@@ -1,10 +1,13 @@
-desc:Kiva waveshaper
+desc:Kiva Waveshaper
 
-slider1:a=1<1,100>Sustain drive (dB)
-slider2:sMix=0<0,1>Sustain mix %
-slider3:b=50<0,400>Transient threshold
-slider4:tMix=0<0,1>Transient mix %
-slider5:gain_db=0<-60,12>Makeup (dB)
+slider1:sustainDrive=1<1,100>Sustain drive (dB)
+slider2:transientThres=50<0,400>Transient threshold
+
+slider4:dryMix=1<0,1>Dry mix %
+slider5:sMix=0<0,1>Sustain mix %
+slider6:tMix=0<0,1>Transient mix %
+
+slider7:gain_db=0<-60,20>Makeup (dB)
 
 in_pin:left input
 in_pin:right input
@@ -33,13 +36,13 @@ d_drive = (next_drive - last_drive)/samplesblock;
 //spl0 = (tan(spl0 * a) + atan(spl0 * b) / ($pi/2)) / 2 * ($pi/2);
 //spl1 = (tan(spl1 * a) + atan(spl1 * b) / ($pi/2)) / 2 * ($pi/2);
 
-sustain0 = ((atan(a*spl0) / (a^0.5)) / ($pi/2));
-transient0   = b * tMix * (asin(spl0)^3) / ($pi/2);
-spl0 = spl0 * (1-sMix) + sustain0 * sMix + (transient0 * tMix);
+sustain0 = ((atan(sustainDrive*spl0) / (sustainDrive^0.5)) / ($pi/2));
+transient0 = transientThres * tMix * (asin(spl0)^3) / ($pi/2);
+spl0 = (spl0 * dryMix) + (sustain0 * sMix) + (transient0 * tMix);
 
-sustain1 = ((atan(a*spl1) / (a^0.5)) / ($pi/2));
-transient1   = b * tMix * (asin(spl1)^3) / ($pi/2);
-spl1 = spl1 * (1-sMix) + sustain1 * sMix + (transient1 * tMix);
+sustain1 = ((atan(sustainDrive*spl1) / (sustainDrive^0.5)) / ($pi/2));
+transient1 = transientThres * tMix * (asin(spl1)^3) / ($pi/2);
+spl1 = (spl1 * dryMix) + (sustain1 * sMix) + (transient1 * tMix);
 
 //spl0 = (atan(tan(spl0 * a)/a * b)/b / ($pi/2)) / 2 * ($pi/2);
 //spl1 = (atan(tan(spl1 * a)/a * b)/b / ($pi/2)) / 2 * ($pi/2);

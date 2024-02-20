@@ -1,4 +1,4 @@
-desc:Kiva rectifier distortion
+desc:Kiva Gain
 
 slider1:gain_db=0<-150,12,1>gain (dB)
 
@@ -17,17 +17,6 @@ next_gain=10^(gain_db/20);
 d_gain = (next_gain - last_gain)/samplesblock;
 
 @sample
-/*spl0 < 0 ? (
-  spl0 = -spl0;
-);
-
-spl1 < 0 ? (
-  spl1 = -spl1;
-);*/
-
-spl0 = abs(spl0);
-spl1 = abs(spl1);
-
 spl0 *= last_gain;
 spl1 *= last_gain;
 last_gain += d_gain;

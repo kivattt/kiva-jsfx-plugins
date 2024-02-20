@@ -1,4 +1,4 @@
-desc:atan soft clipper
+desc:Kiva Softclipper
 
 slider1:drive_db=0<0,50>Drive (dB)
 //slider1:drive_db=0<0,20>Drive (dB)

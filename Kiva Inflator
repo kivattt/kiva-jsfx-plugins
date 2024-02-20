@@ -1,4 +1,4 @@
-desc:Kiva waveshaper
+desc:Kiva Inflator
 
 slider1:input_db=0<0,24>Input (dB)
 slider2:effect=0<0,100>Effect mix %

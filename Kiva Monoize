@@ -1,6 +1,6 @@
-desc:Kiva monoize
+desc:Kiva Monoize
 
-slider1:choice=0<0,2,1>0=Left 1=Sum 2=Right
+slider1:choice=0<0,2,1{Left, Right, Sum}>Signal =
 
 in_pin:left input
 in_pin:right input
@@ -19,12 +19,11 @@ choice == 0 ? (
 );
 
 choice == 1 ? (
+  spl0 = spl1;
+);
+
+choice == 2 ? (
   sum = (spl0 + spl1) / 2;
   spl0 = sum;
   spl1 = sum;
 );
-
-choice == 2 ? (
-  spl0 = spl1;
-);
-

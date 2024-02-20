@@ -1,6 +1,6 @@
-desc:Kiva gain
+desc:Kiva Rectifier distortion
 
-slider1:gain_db=0<-150,12,1>gain (dB)
+slider1:gain_db=0<-150,12,1>Make-up gain (dB)
 
 in_pin:left input
 in_pin:right input
@@ -17,6 +17,9 @@ next_gain=10^(gain_db/20);
 d_gain = (next_gain - last_gain)/samplesblock;
 
 @sample
+spl0 = abs(spl0);
+spl1 = abs(spl1);
+
 spl0 *= last_gain;
 spl1 *= last_gain;
 last_gain += d_gain;

@@ -1,7 +1,7 @@
-desc:Lowpass / sample averager
+desc:Kiva Sample averager
 
 slider1:nSamplesBack=0<0,400>N samples averaged
-slider2:makeup_db=0<-10,30>Makeup (dB)
+slider2:makeup_db=0<-20,20>Makeup (dB)
 
 in_pin:left input
 in_pin:right input
@@ -58,8 +58,9 @@ nSamplesBack > 0 ? (
   l0idx = (l0idx + 1) % nSamplesBack;
   l1idx = (l1idx + 1) % nSamplesBack;
 
-  spl0 = lpSpl0 * last_makeup * (nSamplesBack ^ 0.3);
-  spl1 = lpSpl1 * last_makeup * (nSamplesBack ^ 0.3);
+  // Dividing by 2 since it's too loud otherwise
+  spl0 = lpSpl0 * last_makeup * (nSamplesBack ^ 0.3) / 2;
+  spl1 = lpSpl1 * last_makeup * (nSamplesBack ^ 0.3) / 2;
 );
 
 // Keep the makeup gain even when internally bypassed
