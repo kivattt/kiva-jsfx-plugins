@@ -1,0 +1,37 @@
+desc:Kiva waveshaper
+
+slider1:input_db=0<0,24>Input (dB)
+slider2:effect=0<0,100>Effect mix %
+slider3:curve=50<0,100>Curve
+slider4:output_db=0<-24,12>Output (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_input=10^(input_db/20);
+last_output=10^(output_db/20);
+
+@slider
+next_input=10^(input_db/20);
+next_output=10^(output_db/20);
+
+@block
+d_input = (next_input - last_input)/samplesblock;
+d_output = (next_output - last_output)/samplesblock;
+
+@sample
+
+spl0 *= last_input;
+spl1 *= last_input;
+
+spl0 = spl0 * (1-effect/100) + (spl0 * (1 - abs(spl0 * (curve/100)))) * (effect/100);
+spl1 = spl1 * (1-effect/100) + (spl1 * (1 - abs(spl1 * (curve/100)))) * (effect/100);
+
+spl0 *= last_output;
+spl1 *= last_output;
+
+last_input += d_input;
+last_output += d_output;

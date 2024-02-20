@@ -1,0 +1,66 @@
+desc:atan soft clipper
+
+slider1:drive_db=0<0,50>Drive (dB)
+//slider1:drive_db=0<0,20>Drive (dB)
+//slider2:bass_deemphasis=500<20,20000>Bass de-emphasis
+slider3:makeup_db=0<-12,28>Distortion makeup (dB)
+slider4:mix=100<0,100>Mix %
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_drive = 10 ^ (drive_db / 20);
+last_makeup = 10 ^ (makeup_db / 20);
+
+/*N_SAMPLES_BACK = 4;
+
+lastSamples0[0] = 0;
+l0idx = 0;
+
+lastSamples1[0] = 0;
+l1idx = 0*/
+
+@slider
+next_drive = 10 ^ (drive_db / 20);
+next_makeup = 10 ^ (makeup_db/20);
+
+@block
+d_drive  = (next_drive - last_drive) / samplesblock;
+d_makeup = (next_makeup - last_makeup) / samplesblock;
+
+@sample
+/*
+// """"LP"""" filter (phases like crazy dont even)
+lpSpl0 = spl0;
+lpSpl1 = spl1;
+
+i0 = 0;
+i1 = 0;
+loop(N_SAMPLES_BACK,
+  lpSpl0 += lastSamples0[i0];
+  lpSpl1 += lastSamples1[i1];
+
+  i0 += 1;
+  i1 += 1;
+);
+
+lpSpl0 /= (N_SAMPLES_BACK + 1);
+lpSpl1 /= (N_SAMPLES_BACK + 1);
+
+lastSamples0[l0idx] = spl0;
+lastSamples1[l1idx] = spl1;
+l0idx = (l0idx + 1) % N_SAMPLES_BACK;
+l1idx = (l1idx + 1) % N_SAMPLES_BACK;
+*/
+
+spl0 = (spl0 * (1-mix/100)) + (atan(spl0 * last_drive) / last_drive * (last_drive/80+1) * last_makeup) * (mix/100); //+ (lpSpl0 * bass_deemphasis);
+spl1 = (spl1 * (1-mix/100)) + (atan(spl1 * last_drive) / last_drive * (last_drive/80+1) * last_makeup) * (mix/100); //+ (lpSpl1 * bass_deemphasis);
+
+//spl0 = (spl0 * (1-mix/100)) + (spl0 * (1 - (abs(spl0) * last_drive)) * last_makeup * (mix/100));
+//spl1 = (spl1 * (1-mix/100)) + (spl1 * (1 - (abs(spl1) * last_drive)) * last_makeup * (mix/100));
+
+last_drive += d_drive;
+last_makeup += d_makeup;

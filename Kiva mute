@@ -1,0 +1,11 @@
+desc:Kiva mute
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@sample
+spl0 = 0;
+spl1 = 0;
+

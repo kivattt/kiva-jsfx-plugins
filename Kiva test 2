@@ -1,0 +1,9 @@
+desc:Kiva test 2
+
+slider1:s1=0<-18,18,0.5>Band 1 Drive
+slider2:s2=0<-18,18,0.5>s2
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output

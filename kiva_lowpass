@@ -1,0 +1,71 @@
+desc:Lowpass / sample averager
+
+slider1:nSamplesBack=0<0,400>N samples averaged
+slider2:makeup_db=0<-10,30>Makeup (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_makeup = 10 ^ (makeup_db / 20);
+
+lastSamples0[0] = 0;
+l0idx = 0;
+
+lastSamples1[0] = 0;
+l1idx = 0;
+
+@slider
+next_makeup = 10 ^ (makeup_db/20);
+
+@block
+d_makeup = (next_makeup - last_makeup) / samplesblock;
+
+@gfx
+gfx_drawstr("        ", 0, 0);
+nSamplesBack <= 0 ? (
+  gfx_x = 5;
+  gfx_y = 5;
+//  gfx_lineto(5, 5, 0);
+  gfx_r = 1;
+  gfx_g = 0;
+  gfx_b = 0;
+  gfx_drawstr("INTERNAL BYPASS", 0, 0);
+)
+
+@sample
+nSamplesBack > 0 ? (
+  lpSpl0 = spl0;
+  lpSpl1 = spl1;
+
+  i0 = 0;
+  i1 = 0;
+  loop(nSamplesBack,
+    lpSpl0 += lastSamples0[i0];
+    lpSpl1 += lastSamples1[i1];
+
+    i0 += 1;
+    i1 += 1;
+  );
+
+  lpSpl0 /= (nSamplesBack + 1);
+  lpSpl1 /= (nSamplesBack + 1);
+
+  lastSamples0[l0idx] = spl0;
+  lastSamples1[l1idx] = spl1;
+  l0idx = (l0idx + 1) % nSamplesBack;
+  l1idx = (l1idx + 1) % nSamplesBack;
+
+  spl0 = lpSpl0 * last_makeup * (nSamplesBack ^ 0.3);
+  spl1 = lpSpl1 * last_makeup * (nSamplesBack ^ 0.3);
+);
+
+// Keep the makeup gain even when internally bypassed
+nSamplesBack <= 0 ? (
+  spl0 *= last_makeup;
+  spl1 *= last_makeup;
+);
+
+last_makeup += d_makeup;
