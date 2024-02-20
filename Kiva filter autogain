@@ -1,6 +1,7 @@
-desc:Kiva HPF louder high up
+desc:Kiva filter autogain
 
-slider1:Cutoff=0<0,1>Cutoff
+slider1:cutoff=0.1<0.1,1>Cutoff
+slider2:filter=0<0,1,1{Highpass,Lowpass}>Filter
 
 in_pin:left input
 in_pin:right input
@@ -24,11 +25,19 @@ last_lpf1 += (spl1 - last_lpf1) * real_cutoff;
 lpf0 = last_lpf0;
 lpf1 = last_lpf1;
 
-spl0 -= lpf0;
-spl1 -= lpf1;
+filter == 0 ? (
+  spl0 -= lpf0;
+  spl1 -= lpf1;
 
-spl0 *= 1 + 3*(cutoff^3);
-spl1 *= 1 + 3*(cutoff^3);
+  spl0 *= 1 + 3*(cutoff^3);
+  spl1 *= 1 + 3*(cutoff^3);
+) : (
+  spl0 = lpf0;
+  spl1 = lpf1;
+  
+  spl0 /= cutoff;
+  spl1 /= cutoff;
+);
 
 last_lpf0 = lpf0;
 last_lpf1 = lpf1;
