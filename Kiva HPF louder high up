@@ -27,8 +27,8 @@ lpf1 = last_lpf1;
 spl0 -= lpf0;
 spl1 -= lpf1;
 
-spl0 *= 1 + 5*(cutoff^3);
-spl1 *= 1 + 5*(cutoff^3);
+spl0 *= 1 + 3*(cutoff^3);
+spl1 *= 1 + 3*(cutoff^3);
 
 last_lpf0 = lpf0;
 last_lpf1 = lpf1;
