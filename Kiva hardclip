@@ -1,7 +1,7 @@
 desc:Kiva hardclip
 
 slider1:threshold=1<0,1>Threshold
-slider2:gain_db=0<-30,110,1>Makeup gain (dB)
+slider2:gain_db=0<-30,30,1>Makeup gain (dB)
 
 in_pin:left input
 in_pin:right input

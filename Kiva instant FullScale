@@ -1,7 +1,6 @@
 desc:Kiva instant FullScale
 
-slider1:gain_db=0<-150,12,1>gain (dB)
-slider2:1<0,1,1{No,Yes}>-34db Pad
+slider1:gain_db=-35<-150,12,1>gain (dB)
 
 in_pin:left input
 in_pin:right input
@@ -13,7 +12,6 @@ last_gain=10^(gain_db/20);
 
 @slider
 next_gain=10^(gain_db/20);
-pad = slider2;
 
 @block
 d_gain = (next_gain - last_gain)/samplesblock;
@@ -29,11 +27,6 @@ spl1 > 0 ? (
   spl1 = 1;
 ) : (
   spl1 = -1;
-);
-
-pad == 1 ? (
-  spl0 /= 50;
-  spl1 /= 50;
 );
 
 spl0 *= last_gain;
