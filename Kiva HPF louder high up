@@ -8,9 +8,6 @@ out_pin:left output
 out_pin:right output
 
 @init
-last_spl0 = 0;
-last_spl1 = 0;
-
 last_lpf0 = 0;
 last_lpf1 = 0;
 
