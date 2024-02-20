@@ -1,6 +1,6 @@
 # kiva-jsfx-plugins
 
-# Installing for REAPER
+## Installing for REAPER
 - Open REAPER
 - Click Options -> Show REAPER resource path in explorer/finder
 - Put the `kiva-jsfx-plugins` folder in the `Effects` folder
@@ -8,7 +8,7 @@
 - Click FX -> Scan for new plugins
 - You can now find the plugins by searching "kiva" in the FX window filter
 
-# Quick install command for Linux
+## Quick install command for Linux
 ```
 cd ~/.config/REAPER/Effects/ && git clone https://github.com/kivattt/kiva-jsfx-plugins
 ```
