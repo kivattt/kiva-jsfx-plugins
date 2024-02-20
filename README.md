@@ -8,5 +8,5 @@
 - Click FX -> Scan for new plugins
 - You can now find the plugins by searching "kiva" in the FX window filter
 
-# Installing for REAPER on Linux with git installed
+# Quick install command for Linux
 `cd ~/.config/REAPER/Effects/ && git clone https://github.com/kivattt/kiva-jsfx-plugins`
