@@ -1,0 +1,47 @@
+desc:Kiva HPF louder high up
+
+slider1:Cutoff=0<0,1>Cutoff
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_spl0 = 0;
+last_spl1 = 0;
+
+last_lpf0 = 0;
+last_lpf1 = 0;
+
+@slider
+
+@block
+
+@sample
+real_cutoff = cutoff ^ 4;
+
+// LPF
+//spl0 = last_spl0 + (spl0 - last_spl0) * real_cutoff;
+//spl1 = last_spl1 + (spl1 - last_spl1) * real_cutoff;
+
+last_lpf0 += (spl0 - last_lpf0) * real_cutoff;
+last_lpf1 += (spl1 - last_lpf1) * real_cutoff;
+
+lpf0 = last_lpf0;
+lpf1 = last_lpf1;
+
+//lpf0 = last_lpf0 + (spl0 - last_lpf0) * real_cutoff;
+//lpf1 = last_lpf1 + (spl1 - last_lpf1) * real_cutoff;
+
+spl0 -= lpf0;
+spl1 -= lpf1;
+
+spl0 *= 1 + 5*(cutoff^3);
+spl1 *= 1 + 5*(cutoff^3);
+
+//last_spl0 = spl0;
+//last_spl1 = spl1;
+
+last_lpf0 = lpf0;
+last_lpf1 = lpf1;
