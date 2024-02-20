@@ -1,0 +1,14 @@
+desc:Kiva monoize
+
+slider1:gain_db=0<-150,12,1>gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+
+@sample
+spl0 = spl1;
+

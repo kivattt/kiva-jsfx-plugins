@@ -1,0 +1,22 @@
+desc:Kiva monoize sum
+
+slider1:gain_db=0<-150,12,1>gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+sum = (spl0 + spl1) / 2;
+spl0 = sum;
+spl1 = sum;

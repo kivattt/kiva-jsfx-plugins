@@ -1,0 +1,43 @@
+desc:Kiva hardclip
+
+slider1:threshold=1<0,1>Threshold
+slider2:gain_db=0<-30,110,1>Makeup gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain = 10 ^ (gain_db / 20);
+
+@slider
+next_gain = 10 ^ (gain_db / 20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+
+real_threshold = threshold ^ 6;
+
+spl0 > real_threshold ? (
+  spl0 = real_threshold;
+) : (
+  spl0 < -real_threshold ? (
+    spl0 = -real_threshold;
+  )
+);
+
+spl1 > real_threshold ? (
+  spl1 = real_threshold;
+) : (
+  spl1 < -real_threshold ? (
+    spl1 = -real_threshold;
+  )
+);
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+last_gain += d_gain;
+
