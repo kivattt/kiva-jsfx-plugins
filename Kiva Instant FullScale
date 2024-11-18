@@ -1,6 +1,6 @@
 desc:Kiva Instant FullScale
 
-slider1:gain_db=-30<-150,0,1>gain (dB)
+slider1:gain_db=-36<-150,0,1>gain (dB)
 
 in_pin:left input
 in_pin:right input
