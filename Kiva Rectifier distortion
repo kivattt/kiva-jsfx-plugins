@@ -9,6 +9,9 @@ out_pin:right output
 
 @init
 last_gain=10^(gain_db/20);
+last_lpf0 = 0;
+last_lpf1 = 0;
+hpfCutoff = 0.0001; // Just to block DC
 
 @slider
 next_gain=10^(gain_db/20);
@@ -20,7 +23,21 @@ d_gain = (next_gain - last_gain)/samplesblock;
 spl0 = abs(spl0);
 spl1 = abs(spl1);
 
+last_lpf0 += (spl0 - last_lpf0) * hpfCutoff;
+last_lpf1 += (spl1 - last_lpf1) * hpfCutoff;
+
+lpf0 = last_lpf0;
+lpf1 = last_lpf1;
+
+// Block DC with HPF
+spl0 -= lpf0;
+spl1 -= lpf1;
+
 spl0 *= last_gain;
 spl1 *= last_gain;
+
+last_lpf0 = lpf0;
+last_lpf1 = lpf1;
+
 last_gain += d_gain;
 
