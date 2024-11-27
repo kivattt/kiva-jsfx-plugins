@@ -1,0 +1,44 @@
+desc:Kiva Warmth
+
+slider1:drive_db=0<0,50>Drive (dB)
+slider2:style=0<0,1>Style
+slider3:makeup_db=0<-12,12>Makeup (dB)
+slider4:mix=1<0,1>Mix
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_drive=10^(drive_db/20);
+last_makeup=10^(makeup_db/20);
+
+function mixStuff(mixMultiplier, a, b) (
+  (1-mixMultiplier)*a + b*mixMultiplier;
+);
+
+function secondOrderDist(sample) (
+  // TODO: HPF, there's DC offset
+  abs(sample);
+);
+
+function thirdOrderDist(sample) (
+  (atan(sample * last_drive) - sample*15) / last_drive * (last_drive/30+1);
+);
+
+@slider
+next_drive=10^(drive_db/20);
+next_makeup=10^(makeup_db/20);
+
+@block
+d_drive = (next_drive - last_drive)/samplesblock;
+d_makeup = (next_makeup - last_makeup)/samplesblock;
+
+@sample
+
+spl0 = mixStuff(mix, spl0, last_makeup * mixStuff(style, secondOrderDist(spl0), thirdOrderDist(spl0)));
+spl1 = mixStuff(mix, spl1, last_makeup * mixStuff(style, secondOrderDist(spl1), thirdOrderDist(spl1)));
+
+last_drive += d_drive;
+last_makeup += d_makeup;
