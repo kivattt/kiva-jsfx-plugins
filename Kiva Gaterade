@@ -1,0 +1,151 @@
+desc:Kiva Gaterade
+
+slider1:attack_shape=0.13<0,0.47>Attack
+slider2:release_shape=0.13<0,0.52>Release
+slider3:hold=1<0.05,1>Hold
+slider4:speed=1<1,16,1>Speed
+slider5:boxLen=0<0,2,1{8, 16, 32}>Steps
+slider6:makeup_db=0<-15,15>Makeup (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_makeup = 10 ^ (makeup_db / 20);
+buttonSize = 70;
+lastClicked = 0;
+volumeMultiplier = 0;
+boxBorderPixels = 2;
+
+@serialize
+// A 0 value in boxesToggled means a box is ON.
+// This is so that the default when you open the plugin is all ON.
+i = 0;
+loop(32, // Max box length
+	file_var(0, boxesToggled[i]);
+	i += 1;
+);
+
+@slider
+next_makeup = 10 ^ (makeup_db/20);
+
+@block
+d_makeup = (next_makeup - last_makeup) / samplesblock;
+
+@gfx
+r_clear = 10;
+g_clear = 10;
+b_clear = 11;
+gfx_clear = r_clear + g_clear*256 + b_clear*65536;
+
+boxRealLen = pow(2, boxLen+3);
+lastClicked == 0 && mouse_cap & 1 != 0 ? (
+	withinYRange = 0;
+	withinXRange = 0;
+	
+	boxRealLen > 16 ? (
+		withinYRange = mouse_y < 2*buttonSize;
+		withinXRange = mouse_x / buttonSize < boxRealLen / 2;
+	) : (
+		withinYRange = mouse_y < buttonSize;
+		withinXRange = mouse_x / buttonSize < boxRealLen;
+	);
+	
+	
+	withinYRange && withinXRange ? (
+		index = mouse_x / buttonSize;
+		boxRealLen > 16 ? (
+			mouse_y > buttonSize ? (
+				index += 16;
+			);
+		);
+		
+		boxesToggled[index] == 0 ? (
+			boxesToggled[index] = 1 // Turn OFF
+		) : (
+			boxesToggled[index] = 0 // Turn ON
+		);
+	);
+);
+
+lastClicked = mouse_cap & 1;
+inBoxIndex = (beat_position * speed) % boxRealLen;
+
+i = 0;
+loop(boxRealLen,
+	x = i * buttonSize;
+	y = 0;
+	i > 15 ? (
+		y = buttonSize;
+		x -= 16*buttonSize;
+	);
+	
+	inBoxIndex == i ? (
+		gfx_r = 1;
+		gfx_g = 1;
+		gfx_b = 1;
+		gfx_rect(x, y, buttonSize, buttonSize);
+	);
+	
+	gfx_r = 0.18;
+	gfx_g = 0.18;
+	gfx_b = 0.21;
+	boxesToggled[i] == 0 ? ( // ON
+		gfx_r = 0.2;
+		gfx_g = 0.06;
+		gfx_b = 0.08;
+	); 
+	gfx_rect(x+boxBorderPixels, y+boxBorderPixels, buttonSize-boxBorderPixels*2, buttonSize-boxBorderPixels*2);
+	
+	boxesToggled[i] == 0 ? ( // ON
+		gfx_r = 0.7;
+		gfx_g = 0;
+		gfx_b = 0;
+		holdAtPoint1 = hold;
+		holdAtPoint1 < 0.1 ? (
+			holdAtPoint1 = 0.1;
+		);
+		gfx_rect(x+boxBorderPixels, y+boxBorderPixels, (buttonSize * holdAtPoint1)-boxBorderPixels*2, buttonSize-boxBorderPixels*2);
+	);
+	i += 1;
+);
+
+boxRealLen > 8 ? (
+	gfx_r = 0.6;
+	gfx_g = 0.6;
+	gfx_b = 0.6;
+	gfx_line(8*buttonSize, 0, 8*buttonSize, buttonSize);
+	boxRealLen > 16 ? (
+		gfx_line(8*buttonSize, buttonSize, 8*buttonSize, 2*buttonSize); // Extra middle line height
+		gfx_line(0, buttonSize, 16*buttonSize, buttonSize);
+	);
+);
+
+@sample
+nThroughInThing = (beat_position * speed) - ((beat_position * speed) >> 0);
+inStart = nThroughInThing <= hold;
+
+boxRealLen = pow(2, boxLen+3);
+inBoxIndex = (beat_position * speed) % boxRealLen;
+inStart && boxesToggled[inBoxIndex] == 0 ? ( // OFF
+	volumeMultiplier < 1 ? (
+		volumeMultiplier += pow(1 - attack_shape, 15);
+		volumeMultiplier > 1 ? (
+			volumeMultiplier = 1;
+		);
+	);
+) : (
+	volumeMultiplier > 0 ? (
+		volumeMultiplier -= pow(1 - release_shape, 15);
+		volumeMultiplier < 0 ? (
+			volumeMultiplier = 0;
+		);
+	);
+);
+
+spl0 *= volumeMultiplier * last_makeup;
+spl1 *= volumeMultiplier * last_makeup;
+
+last_makeup += d_makeup;
