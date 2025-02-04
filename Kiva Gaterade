@@ -14,7 +14,7 @@ out_pin:right output
 
 @init
 last_makeup = 10 ^ (makeup_db / 20);
-buttonSize = 70;
+buttonSize = 50;
 lastClicked = 0;
 volumeMultiplier = 0;
 boxBorderPixels = 2;
@@ -93,14 +93,14 @@ loop(boxRealLen,
 	gfx_g = 0.18;
 	gfx_b = 0.21;
 	boxesToggled[i] == 0 ? ( // ON
-		gfx_r = 0.2;
+		gfx_r = 0.45;
 		gfx_g = 0.06;
 		gfx_b = 0.08;
 	); 
 	gfx_rect(x+boxBorderPixels, y+boxBorderPixels, buttonSize-boxBorderPixels*2, buttonSize-boxBorderPixels*2);
 	
 	boxesToggled[i] == 0 ? ( // ON
-		gfx_r = 0.7;
+		gfx_r = 0.8;
 		gfx_g = 0;
 		gfx_b = 0;
 		holdAtPoint1 = hold;
