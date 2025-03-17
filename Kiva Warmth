@@ -1,6 +1,6 @@
 desc:Kiva Warmth
 
-slider1:drive_db=0<0,50>Drive (dB)
+slider1:drive_db=50<0,50>Drive (dB)
 slider2:style=0<0,1>Style
 slider3:makeup_db=0<-12,12>Makeup (dB)
 slider4:mix=1<0,1>Mix

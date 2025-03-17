@@ -1,0 +1,79 @@
+desc:Kiva Synth
+
+slider1:nSignals=2<2,20,2>num signals
+slider2:gain_db=-24<-150,12,1>gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+noteOn = 0;
+note = 0;
+i = 0;
+signals[0] = 0;
+
+function slap(signal)
+(
+  signal;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+while (midirecv(offset, msg, note, velocity)) (
+  type = msg & 0xF0;
+  chan = msg & 0x0F;
+  
+  type == 0x90 && velocity > 0 ? (
+    noteOn = 1;
+    i = 0;
+    note = 440 * pow(2, (note-69) / 12);
+  );
+    
+  type == 0x80 ? (
+    noteOn = 0;
+  );
+  
+  midisend(offset, msg, note, velocity);
+);
+
+@sample
+idx = 0;
+loop(nSignals,
+  offset = 1 + ((idx-nSignals/2) / 256);
+  signals[idx] = slap(sin(i/srate*2760 * note/440 * offset));
+  idx += 1;
+);
+
+signalLeft = 0;
+signalRight = 0;
+
+idx = 0;
+loop(nSignals/2,
+  signalLeft += signals[idx];
+  signalRight += signals[idx+1];
+  idx += 2;
+);
+signalLeft /= nSignals/2;
+signalRight /= nSignals/2;
+
+signalLeft *= last_gain;
+signalRight *= last_gain;
+last_gain += d_gain;
+
+i += 1;
+
+noteOn == 1 ? (
+  spl0 = signalLeft;
+  spl1 = signalRight;
+) : (
+  spl0 = 0;
+  spl1 = 0;
+);
+
