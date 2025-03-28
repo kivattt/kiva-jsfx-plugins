@@ -1,8 +1,9 @@
 desc:Kiva Synth
 
 slider1:nSignals=2<2,20,2>Voices
-slider2:gain_db=-24<-150,12,1>Gain (dB)
-slider3:waveshape=0<0,2,1{Saw,Square,Sine}>Waveshape
+slider2:octave=0<-3,3,1>Octave
+slider3:waveshape=Saw<0,2,1{Saw,Square,Sine}>Waveshape
+slider4:gain_db=-24<-150,12,1>Gain (dB)
 
 in_pin:left input
 in_pin:right input
@@ -70,6 +71,7 @@ loop(nSignals,
   offset = 1 + ((idx-nSignals/2) / 256);
   s = 0;
   input = i/srate*2760 * note/440 * offset;
+  input *= 2 ^ octave;
   
   waveshape == 0 ? ( // Saw
     s = sawtooth_wave(input);
