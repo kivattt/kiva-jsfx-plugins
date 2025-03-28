@@ -1,7 +1,8 @@
 desc:Kiva Synth
 
-slider1:nSignals=2<2,20,2>num signals
-slider2:gain_db=-24<-150,12,1>gain (dB)
+slider1:nSignals=2<2,20,2>Voices
+slider2:gain_db=-24<-150,12,1>Gain (dB)
+slider3:waveshape=0<0,2,1{Saw,Square,Sine}>Waveshape
 
 in_pin:left input
 in_pin:right input
@@ -15,9 +16,29 @@ note = 0;
 i = 0;
 signals[0] = 0;
 
-function slap(signal)
+function fmod(a, b)
 (
-  signal;
+  a - floor(a / b) * b;
+);
+
+function sawtooth_wave(signal)
+(
+  1 - fmod(signal / $pi, 2);
+);
+
+
+function square_wave(signal)
+(
+  fmod(signal, 2*$pi) < $pi ? (
+    -1;
+  ) : (
+    1;
+  );
+);
+
+function sine_wave(signal)
+(
+  sin(signal);
 );
 
 @slider
@@ -47,7 +68,20 @@ while (midirecv(offset, msg, note, velocity)) (
 idx = 0;
 loop(nSignals,
   offset = 1 + ((idx-nSignals/2) / 256);
-  signals[idx] = slap(sin(i/srate*2760 * note/440 * offset));
+  s = 0;
+  input = i/srate*2760 * note/440 * offset;
+  
+  waveshape == 0 ? ( // Saw
+    s = sawtooth_wave(input);
+  ) : (
+    waveshape == 1 ? ( // Square
+      s = square_wave(input);
+    ) : ( // Sine
+        s = sine_wave(input);
+    );
+  );
+
+  signals[idx] = s;
   idx += 1;
 );
 
