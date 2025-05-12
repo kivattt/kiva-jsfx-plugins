@@ -1,6 +1,7 @@
 desc:Kiva Monoize
+import ui-lib.jsfx-inc
 
-slider1:choice=0<0,2,1{Left, Right, Sum}>Signal =
+slider1:choice=0<0,4,1{Left, Right, Sum, Side, Bypass}>-Signal =
 
 in_pin:left input
 in_pin:right input
@@ -8,22 +9,90 @@ out_pin:left output
 out_pin:right output
 
 @init
+freemem = ui_setup(0);
+N_BUTTONS = 5;
 
 @slider
 
 @block
 
+@gfx
+control_start(0, "black");
+//ui_fontface("Inter");
+ui_fontface("JetBrains Mono");
+ui_fontsize(22);
+
+pad = 1;
+ui_pad(pad, pad, pad, pad);
+
+ui_split_leftratio(1 / N_BUTTONS);
+  control_button("Left") ? (
+    choice = 0;
+  );
+  choice == 0 ? (
+    ui_color(0, 255, 255, 0.4);
+    ui_pad(2, 2);
+    ui_fill();
+  );
+ui_split_next();
+  control_button("Right") ? (
+    choice = 1
+  );
+  choice == 1 ? (
+    ui_color(0, 255, 255, 0.4);
+    ui_pad(2, 2);
+    ui_fill();
+  );
+ui_split_next();
+  control_button("Sum") ? (
+    choice = 2
+  );
+  choice == 2 ? (
+    ui_color(0, 255, 255, 0.4);
+    ui_pad(2, 2);
+    ui_fill();
+  );
+ui_split_next();
+  control_button("Side") ? (
+    choice = 3
+  );
+  choice == 3 ? (
+    ui_color(0, 255, 255, 0.4);
+    ui_pad(2, 2);
+    ui_fill();
+  );
+ui_split_next();
+  control_button("Bypass") ? (
+    choice = 4
+  );
+  choice == 4 ? (
+    ui_color(255, 0, 0, 0.4);
+    ui_pad(2, 2);
+    ui_fill();
+  );
+ui_color(255, 0, 0, 0.3);
+ui_pad(2, 2);
+ui_fill();
+
+ui_pop();
+
 @sample
-choice == 0 ? (
+choice == 0 ? ( // Left
   spl1 = spl0;
 );
 
-choice == 1 ? (
+choice == 1 ? ( // Right
   spl0 = spl1;
 );
 
-choice == 2 ? (
+choice == 2 ? ( // Sum
   sum = (spl0 + spl1) / 2;
   spl0 = sum;
   spl1 = sum;
+);
+
+choice == 3 ? ( // Side
+  side = spl0 - spl1;
+  spl0 = side;
+  spl1 = side;
 );
