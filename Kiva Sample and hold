@@ -1,0 +1,41 @@
+desc:Kiva Sample and hold
+
+slider1:the_time=0<0,1000,1>Time (microseconds)
+// Peakiness is a weird, bad sounding parameter
+slider2:peakiness=0<0,1,0.01>Peakiness
+slider4:gain_db=0<-12,12,1>gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+lastMicro = 0;
+i = 1;
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+lastMicro > the_time || (lastMicro == 0) ? (
+  lastLeft = spl0;
+  lastRight = spl1;
+  lastMicro = 0;
+  i = 1;
+);
+lastMicro += 1000000 / srate;
+
+spl0 = lastLeft / i;
+spl1 = lastRight / i;
+
+i += peakiness / 4; // Does nothing when peakiness == 0
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+last_gain += d_gain;
+
