@@ -2,6 +2,7 @@ desc:Kiva Filter autogain
 
 slider1:cutoff=0.1<0.1,1>Cutoff
 slider2:filter=0<0,1,1{Highpass,Lowpass}>Filter
+slider3:enable_autogain=1<1,0,1{Disable,Enable}>Autogain
 
 in_pin:left input
 in_pin:right input
@@ -17,7 +18,7 @@ last_lpf1 = 0;
 @block
 
 @sample
-real_cutoff = cutoff ^ 4;
+real_cutoff = cutoff ^ 4 / (srate / 44100);
 
 last_lpf0 += (spl0 - last_lpf0) * real_cutoff;
 last_lpf1 += (spl1 - last_lpf1) * real_cutoff;
@@ -29,14 +30,18 @@ filter == 0 ? (
   spl0 -= lpf0;
   spl1 -= lpf1;
 
-  spl0 *= 1 + 3*(cutoff^3);
-  spl1 *= 1 + 3*(cutoff^3);
+  enable_autogain ? (
+    spl0 *= 1 + 3*(cutoff^3);
+    spl1 *= 1 + 3*(cutoff^3);
+  );
 ) : (
   spl0 = lpf0;
   spl1 = lpf1;
   
-  spl0 /= cutoff;
-  spl1 /= cutoff;
+  enable_autogain ? (
+    spl0 /= cutoff;
+    spl1 /= cutoff;
+  );
 );
 
 last_lpf0 = lpf0;
