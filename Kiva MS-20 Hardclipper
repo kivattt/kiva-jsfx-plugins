@@ -1,0 +1,124 @@
+desc:Kiva MS-20 Hardclipper
+
+slider1:drive_db=0<-20,55,1>Drive (dB)
+slider2:output_db=0<-25,12,1>Output (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_drive=10^(drive_db/20);
+last_output=10^(output_db/20);
+threshold = 0.3;
+clip_light_left = 0;
+clip_light_right = 0;
+last_lpf0 = 0;
+last_lpf1 = 0;
+lpf_cutoff = 1.0;
+
+function process(sample, isRight) (
+  // Cutoff calculation
+  last_drive < 2.5 ? (
+    lpf_cutoff = 1.0;
+  ) : (
+    last_drive < 3.96 ? (
+      lpf_cutoff = 1 - 0.3*(pow((last_drive - 2.5) / 2, 2));
+    ) : (
+      last_drive < 12.6 ? (
+        lpf_cutoff = 0.99 - last_drive / 27;
+      ) : (
+        lpf_cutoff = 0.52200625;
+      );
+    );
+  );
+  
+  lpf_cutoff /= srate / 44100;
+  
+  isRight == 0 ? (
+    clip_light_left = 0;
+
+    last_lpf0 += (sample - last_lpf0) * lpf_cutoff;
+    lpf0 = last_lpf0;
+    sample = lpf0;
+    last_lpf0 = lpf0;
+  ) : (
+    clip_light_right = 0;
+    
+    last_lpf1 += (sample - last_lpf1) * lpf_cutoff;
+    lpf1 = last_lpf1;
+    sample = lpf1;
+    last_lpf1 = lpf1;
+  );
+
+  sample *= last_drive;
+  
+  abs(sample) > threshold ? (
+    isRight == 0 ? (
+      clip_light_left = 1;
+    ) : (
+      clip_light_right = 1;
+    );
+    sample > 0 ? (
+      sample = threshold;
+    ) : (
+      sample = -threshold;
+    );
+  );
+
+  last_drive <= 1 ? (
+    sample /= last_drive;
+  ) : (
+    last_drive < 7 ? (
+      sample /= pow(last_drive, 0.5);
+      //sample /= pow(last_drive, 0.9);
+    ) : (
+      sample /= 2.639;
+      //sample /= 6.5;
+    );
+  );
+  
+  sample *= last_output;
+  
+  sample;
+);
+
+@slider
+next_drive=10^(drive_db/20);
+next_output=10^(output_db/20);
+
+@block
+d_drive = (next_drive - last_drive)/samplesblock;
+d_output = (next_output - last_output)/samplesblock;
+
+@gfx
+clip_light_left == 1 ? (
+  gfx_r = 255;
+  gfx_g = 0;
+  gfx_b = 0;
+) : (
+  gfx_r = 255;
+  gfx_g = 255;
+  gfx_b = 255;
+);
+gfx_rect(0, 0, 50, 50);
+
+clip_light_right == 1 ? (
+  gfx_r = 255;
+  gfx_g = 0;
+  gfx_b = 0;
+) : (
+  gfx_r = 255;
+  gfx_g = 255;
+  gfx_b = 255;
+);
+gfx_rect(55, 0, 50, 50);
+
+@sample
+
+spl0 = process(spl0, 0);
+spl1 = process(spl1, 1);
+
+last_drive += d_drive;
+last_output += d_output;
