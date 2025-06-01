@@ -1,7 +1,8 @@
 desc:Kiva MS-20 Hardclipper
 
 slider1:drive_db=0<-20,55,1>Drive (dB)
-slider2:output_db=0<-25,12,1>Output (dB)
+slider2:recover_highs=0<0,1,1{Off,On}>Recover highs
+slider4:output_db=0<-25,12,1>Output (dB)
 
 in_pin:left input
 in_pin:right input
@@ -41,6 +42,7 @@ function process(sample, isRight) (
 
     last_lpf0 += (sample - last_lpf0) * lpf_cutoff;
     lpf0 = last_lpf0;
+    hpf0 = sample - lpf0;
     sample = lpf0;
     last_lpf0 = lpf0;
   ) : (
@@ -48,6 +50,7 @@ function process(sample, isRight) (
     
     last_lpf1 += (sample - last_lpf1) * lpf_cutoff;
     lpf1 = last_lpf1;
+    hpf1 = sample - lpf1;
     sample = lpf1;
     last_lpf1 = lpf1;
   );
@@ -66,7 +69,7 @@ function process(sample, isRight) (
       sample = -threshold;
     );
   );
-
+  
   last_drive <= 1 ? (
     sample /= last_drive;
   ) : (
@@ -79,6 +82,13 @@ function process(sample, isRight) (
     );
   );
   
+  recover_highs == 1 ? (
+    isRight == 0 ? (
+      sample += hpf0;
+    ) : (
+      sample += hpf1;
+    );
+  );
   sample *= last_output;
   
   sample;
