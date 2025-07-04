@@ -1,6 +1,6 @@
 desc:Kiva Gaterade
 
-slider1:attack_shape=0.13<0,0.47>Attack
+slider1:attack_shape=0.13<0,0.8>Attack
 slider2:release_shape=0.13<0,0.52>Release
 slider3:hold=1<0.05,1>Hold
 slider4:speed=1<1,16,1>Speed

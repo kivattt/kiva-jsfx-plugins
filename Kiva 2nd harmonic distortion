@@ -1,0 +1,131 @@
+desc:Kiva 2nd harmonic distortion
+
+slider1:choice=0<0,2,1{A,B,C,D,E}>Choice
+slider2:drive_db=0<-20,50,0.1>drive (dB)
+
+slider4:gain_db=0<-20,24,0.1>output (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+last_drive=10^(drive_db/20);
+
+// \arctan x\left\{-1<x<1\right\}
+function process_A(sample) (
+  out = 0;
+  sample < 0 ? (
+    out = 4 * atan(sample / 4);
+  ) : (
+    out = atan(sample);
+  );
+  out;
+);
+
+// \frac{x}{1+\frac{x}{4\ }}\left\{x>0\right\}
+// \frac{x}{1+\frac{-x}{4\ }}\left\{x<0\right\}
+function process_B(sample) (
+  out = 0;
+  sample < 0 ? (
+    sOver = -sample / 4;
+    out = 4 * (-sOver / (1 + sOver/4));
+  ) : (
+    out = sample / (1 + sample/4);
+  );
+  out;
+);
+
+// c+0.5x+\frac{1}{3}\sin\left(1.5x\right)+1.0472\left\{-2.0944<x<2.0944\right\}
+// c+0\left\{x\le-2.0944\right\}
+// c+2.0944\left\{x>2.0944\right\}
+// c=-1.0472
+function process_C(sample) (
+  out = 0;
+  sample < 0 ? (
+    sOver = sample / 4;
+    c = -1.0472;
+    sOver <= -2.0944 ? (
+      out = c + 0;
+    ) : (
+      sOver > 2.0944 ? (
+        out = c + 2.0944;
+      ) : (
+        out = c + 0.5*sOver + 1/3 * sin(1.5*sOver) + 1.0472;
+      );
+    );
+    out *= 4;
+  ) : (
+    c = -1.0472;
+    sample <= -2.0944 ? (
+      out = c + 0;
+    ) : (
+      sample > 2.0944 ? (
+        out = c + 2.0944;
+      ) : (
+        out = c + 0.5*sample + 1/3 * sin(1.5*sample) + 1.0472;
+      );
+    );
+  );
+  out;
+);
+
+// Drawmer v1
+function process_D(sample) (
+  out = atan(5 * sample) / 2;
+  out;
+);
+
+// Drawmer v2
+// x\cdot\left(\frac{1}{0.13+\operatorname{abs}\left(x\right)}\right)\cdot\frac{1}{5}
+function process_E(sample) (
+  //out = sample * (1 / (0.13 + abs(sample))) * 0.8;
+  out = sample * (1 / (0.15 + abs(sample))) * 0.76;
+  out;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+next_drive=10^(drive_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+d_drive = (next_drive - last_drive)/samplesblock;
+
+@sample
+spl0 *= last_drive;
+spl1 *= last_drive;
+
+choice == 0 ? (
+  spl0 = process_A(spl0);
+  spl1 = process_A(spl1);
+) : (
+  choice == 1 ? (
+    spl0 = process_B(spl0);
+    spl1 = process_B(spl1);
+  ) : (
+    choice == 2 ? (
+      spl0 = process_C(spl0);
+      spl1 = process_C(spl1);
+    ) : (
+      choice == 3 ? (
+        spl0 = process_D(spl0);
+        spl1 = process_D(spl1);
+      ) : (
+        spl0 = process_E(spl0);
+        spl1 = process_E(spl1);
+      );
+    );
+  );
+);
+
+spl0 /= last_drive;
+spl1 /= last_drive;
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+
+last_gain += d_gain;
+last_drive += d_drive;
