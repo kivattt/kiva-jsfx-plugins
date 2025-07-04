@@ -1,0 +1,71 @@
+desc:Kiva Distortion Thing
+
+slider1:input_db=0<-40,40,0.1>Input gain (dB)
+
+slider3:bias=0<-0.5,0.5,0.001>Bias
+slider4:positive_shape=0<0,1,0.001>Positive shape
+slider5:negative_shape=0<0,1,0.001>Negative shape
+
+slider7:mix_var=1<0,1,0.001>Mix %
+slider8:output_db=0<-40,40,0.1>Output gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_input=10^(input_db/20);
+last_output=10^(output_db/20);
+
+function softclip(sample) (
+  //atan(sample);
+  atan(5*sample) / 2;
+);
+
+function hardclip(sample) (
+  out = sample;
+  
+  point = 1.05;
+  sample < -point ? (
+    out = -point;
+  ) : (
+    sample > point ? (
+      out = point;
+    );
+  );
+  out;
+);
+
+function mix(a, b, n) (
+  (a * (1-n)) + (b * n);
+);
+
+function process(sample) (
+  out = sample * last_input + bias * last_input;
+  
+  out < 0 ? (
+    out = mix(softclip(out), hardclip(out), negative_shape);
+  ) : (
+    out = mix(softclip(out), hardclip(out), positive_shape);
+  );
+  
+  out = mix(sample, out * last_output, mix_var);
+  out;
+);
+
+@slider
+next_input=10^(input_db/20);
+next_output=10^(output_db/20);
+
+@block
+d_input = (next_input - last_input)/samplesblock;
+d_output = (next_output - last_output)/samplesblock;
+
+@sample
+spl0 = process(spl0);
+spl1 = process(spl1);
+
+last_input += d_input;
+last_output += d_output;
+
