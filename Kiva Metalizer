@@ -1,0 +1,39 @@
+desc:Kiva Metalizer
+
+slider1:n_times_slider=0<0,35,1>N times
+slider2:aggro=0<0,100,0.1>Aggro
+
+slider4:gain_db=0<-20,12,0.1>output (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+
+function process(sample, n_times) (
+  out = sample;
+  //out = abs(sample);
+  loop(n_times + out*aggro,
+    out = abs(out - 0.05) * 1.1;
+  );
+  out;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+spl0 = process(spl0, n_times_slider);
+spl1 = process(spl1, n_times_slider);
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+
+last_gain += d_gain;
+
