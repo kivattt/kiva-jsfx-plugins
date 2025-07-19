@@ -1,0 +1,56 @@
+desc:Kiva WAM
+
+slider1:gain_db=0<-15,28,0.1>gain (dB)
+slider2:cutoff_slider=1<0.001,1, 0.001>Cutoff
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+
+function lpf(sample, cutoff) instance(last_thing) (
+  last_thing += (sample - last_thing) * cutoff;
+  last_thing;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+real_cutoff = cutoff_slider ^ 4 / (srate / 44100);
+
+//mul0 = a.lpf(abs(left.lpf(spl0, cutoff_slider)), cutoff_slider);
+//mul1 = b.lpf(abs(right.lpf(spl1, cutoff_slider)), cutoff_slider);
+
+//spl0 *= max(0, mul0 - 0.02) * 6;
+//spl1 *= max(0, mul1 - 0.02) * 6;
+
+//spl0 *= 10 * (0.05 - min(0.05, mul0));
+//spl1 *= 10 * (0.05 - min(0.05, mul1));
+
+//spl0 /= (mul0 * 8);
+//spl1 /= (mul1 * 8);
+
+mul0 = abs(left.lpf(spl0, cutoff_slider));
+mul1 = abs(right.lpf(spl1, cutoff_slider));
+
+mul0 = abs(mul0 - 0.015);
+mul1 = abs(mul1 - 0.015);
+
+//spl0 = mul0;
+//spl1 = mul1;
+
+spl0 *= max(0, mul0 - 0.02) * 6;
+spl1 *= max(0, mul1 - 0.02) * 6;
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+
+last_gain += d_gain;
+

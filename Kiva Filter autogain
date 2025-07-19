@@ -20,11 +20,8 @@ last_lpf1 = 0;
 @sample
 real_cutoff = cutoff ^ 4 / (srate / 44100);
 
-last_lpf0 += (spl0 - last_lpf0) * real_cutoff;
-last_lpf1 += (spl1 - last_lpf1) * real_cutoff;
-
-lpf0 = last_lpf0;
-lpf1 = last_lpf1;
+lpf0 += (spl0 - lpf0) * real_cutoff;
+lpf1 += (spl1 - lpf1) * real_cutoff;
 
 filter == 0 ? (
   spl0 -= lpf0;
@@ -43,6 +40,3 @@ filter == 0 ? (
     spl1 /= cutoff;
   );
 );
-
-last_lpf0 = lpf0;
-last_lpf1 = lpf1;

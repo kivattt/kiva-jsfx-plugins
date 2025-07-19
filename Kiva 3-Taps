@@ -1,0 +1,42 @@
+desc:Kiva 3-Taps
+
+slider1:gain_db=0<-150,12,1>gain (dB)
+slider2:tap1=0<-0.4,0.4,0.01>tap1
+slider3:tap2=0<-0.4,0.4,0.01>tap2
+slider4:tap3=0<-0.4,0.4,0.01>tap3
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+
+function process(sample, lastSample, lastLastSample, lastLastLastSample, isRight) (
+  out = sample - lastSample * tap1 + lastLastSample * tap2 - lastLastLastSample * tap3;
+  out;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+spl0 = process(spl0, last0, lastlast0, lastlastlast0, 0);
+spl1 = process(spl1, last1, lastlast1, lastlastlast1, 1);
+
+lastlastlast0 = lastlast0;
+lastlastlast1 = lastlast1;
+lastlast0 = last0;
+lastlast1 = last1;
+last0 = spl0;
+last1 = spl1;
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+
+last_gain += d_gain;
+

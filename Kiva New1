@@ -1,0 +1,73 @@
+desc:Kiva New1
+
+slider1:gain_db=0<-150,12,1>gain (dB)
+
+slider2:freq_1=1000<20,20000,1:log>Frequency
+slider3:q_1=0.71<0.2,10,0.0001:log>Q
+slider4:gain_1=0<-10,2,0.001>Gain
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+bpf_a0 = 0;
+bpf_a1 = 0;
+bpf_a2 = 0;
+
+bpf_b0 = 0;
+bpf_b1 = 0;
+bpf_b2 = 0;
+
+function recalculate_coefficients(Fc, Q) (
+  K = tan($pi * Fc / srate);
+  norm = 1 / (1 + K / Q + K * K);
+  bpf_a0 = K / Q * norm;
+  bpf_a1 = 0;
+  bpf_a2 = -bpf_a0;
+  
+  bpf_b0 = 1;
+  bpf_b1 = 2 * (K * K - 1) * norm;
+  bpf_b2 = (1 - K / Q + K * K) * norm;
+);
+
+function bpf(sample) instance(x1, x2, x3, y1, y2, y3) (
+  x1 = sample;
+  
+  y1 = bpf_a0 * x1 + bpf_a1 * x2 + bpf_a2 * x3
+    - bpf_b1 * y2 - bpf_b2 * y3;
+  x3 = x2;
+  x2 = x1;
+  y3 = y2;
+  y2 = y1;
+  out = y1;
+  
+  out;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+freq_1 != lastFreq || q_1 != lastQ ? (
+  recalculate_coefficients(freq_1, q_1);
+);
+lastFreq = freq_1;
+lastQ = q_1;
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+spl0 *= last_gain;
+spl1 *= last_gain;
+
+l_band1 = left_band1.bpf(spl0);
+r_band1 = right_band2.bpf(spl1);
+
+spl0 += l_band1 * gain_1;
+spl1 += r_band1 * gain_1;
+
+last_gain += d_gain;
+

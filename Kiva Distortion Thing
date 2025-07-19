@@ -19,8 +19,8 @@ last_input=10^(input_db/20);
 last_output=10^(output_db/20);
 
 function softclip(sample) (
-  //atan(sample);
-  atan(5*sample) / 2;
+  atan(sample);
+  //atan(5*sample) / 2;
 );
 
 function hardclip(sample) (
