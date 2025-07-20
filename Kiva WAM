@@ -1,7 +1,8 @@
 desc:Kiva WAM
 
-slider1:gain_db=0<-15,28,0.1>gain (dB)
-slider2:cutoff_slider=1<0.001,1, 0.001>Cutoff
+slider1:cutoff_slider=1<0.001,1, 0.001>Cutoff
+
+slider3:gain_db=-14<-40,24,0.1>output (dB)
 
 in_pin:left input
 in_pin:right input

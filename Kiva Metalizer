@@ -2,8 +2,9 @@ desc:Kiva Metalizer
 
 slider1:n_times_slider=0<0,35,1>N times
 slider2:aggro=0<0,100,0.1>Aggro
+slider3:whoevenknows=0.05<0.03,0.1, 0.001>Who even knows
 
-slider4:gain_db=0<-20,12,0.1>output (dB)
+slider5:gain_db=-6<-20,12,0.1>output (dB)
 
 in_pin:left input
 in_pin:right input
@@ -12,14 +13,36 @@ out_pin:right output
 
 @init
 last_gain=10^(gain_db/20);
+hpf_cutoff = 0.001;
+
+function shape(x) (
+  //x - atan(5*x);
+  
+  /*out = x;
+  x > 0 ? (
+    out = x*x;
+  ) : (
+    out = -(x*x);
+  );
+  out = clamp(out, -1, 1);*/
+  
+  //out;
+  x;
+  //(x * 0.2775) * (x * 0.2775);
+);
 
 function process(sample, n_times) (
   out = sample;
   //out = abs(sample);
-  loop(n_times + out*aggro,
-    out = abs(out - 0.05) * 1.1;
+  loop(n_times + shape(out*aggro),
+    out = abs(out - whoevenknows) * 1.1;
   );
   out;
+);
+
+function hpf(sample) instance(thing) (
+  thing += (sample - thing) * hpf_cutoff;
+  sample - thing;
 );
 
 @slider
@@ -31,6 +54,9 @@ d_gain = (next_gain - last_gain)/samplesblock;
 @sample
 spl0 = process(spl0, n_times_slider);
 spl1 = process(spl1, n_times_slider);
+
+spl0 = left.hpf(spl0);
+spl1 = right.hpf(spl1);
 
 spl0 *= last_gain;
 spl1 *= last_gain;

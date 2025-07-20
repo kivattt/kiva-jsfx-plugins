@@ -1,7 +1,10 @@
 desc:Kiva Compressor1
 
-slider1:gain_db=0<-150,12,1>gain (dB)
-slider2:mute=0<0,1,1{Unmute, Mute}>Output
+slider1:threshold=1<0,1,0.001>Threshold
+slider2:lpf_cutoff=0.4<0.00001,0.0005,0.00001>Cutoff
+slider3:strength=5<1,20,0.1>Strength
+
+slider5:gain_db=0<-20,36,1>Makeup gain (dB)
 
 in_pin:left input
 in_pin:right input
@@ -10,6 +13,19 @@ out_pin:right output
 
 @init
 last_gain=10^(gain_db/20);
+attenuation = 0;
+
+history[0] = 0;
+historyMaxSize = 800;
+
+function lpf(sample) instance(thing) (
+  thing += (sample - thing) * lpf_cutoff;
+  thing;
+);
+
+function vol(sample) (
+  abs(sample);
+);
 
 @slider
 next_gain=10^(gain_db/20);
@@ -17,13 +33,59 @@ next_gain=10^(gain_db/20);
 @block
 d_gain = (next_gain - last_gain)/samplesblock;
 
-@sample
-mute ? (
-  spl0 = 0;
-  spl1 = 0;
-) : (
-  spl0 *= last_gain;
-  spl1 *= last_gain;
+@gfx
+i = 1;
+loop(historyMaxSize,
+  gfx_x = i;
+  gfx_y = gfx_h - history[i] * 600;
+  
+  history[i] > threshold ? (
+    diff = 15 * (history[i] - threshold);
+    gfx_r = diff;
+    gfx_g = diff / 1.4;
+    gfx_b = 0;
+  ) : (
+    gfx_r = 0.3;
+    gfx_g = 0.3;
+    gfx_b = 0.3;
+  );
+  
+  i += 1;
+  gfx_rect(gfx_x, gfx_y, 3, 3);
+  //gfx_setpixel(gfx_r, gfx_g, gfx_b);
+  
+  gfx_y = gfx_h - threshold * 600;
+  gfx_setpixel(0.0, 0.3, 0.3);
+  
+  gfx_r = 0;
+  gfx_g = 76;
+  gfx_b = 0;
+  gfx_rect(0,0,attenuation*1200,50);
 );
+
+@sample
+lvl = vol(spl0+spl1);
+lvl = that.lpf(lvl);
+
+//spl0 /= max(1, lvl + threshold);
+//spl1 /= max(1, lvl + threshold);
+
+attenuation = 0;
+lvl > threshold ? (
+  attenuation = lvl-threshold;
+  div = 1 + strength*(lvl - threshold);
+  spl0 /= div;
+  spl1 /= div;
+);
+
+history[j] = lvl;
+j = (j + 1) % historyMaxSize;
+
+//spl0 *= vol(spl0);
+//spl1 *= vol(spl1);
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+
 last_gain += d_gain;
 
