@@ -1,8 +1,15 @@
 desc:Kiva Kickstart
-// Send your midi channel to Bus 2 (B2) !
 
-slider1:gain_db=0<-150,12,1>gain (dB)
-slider2:lpf_cutoff=0.4<0.00001,0.0005,0.00001>Cutoff
+// You need to send MIDI to Bus 2, channel 16 (2/16) for this plugin to work
+
+slider1:shape_preset=0<0,3,1{Fast end, Square (continuous), Linear}>Shape
+slider2:shape_offset=0<-1,1>Offset
+slider3:shape_smoothness=0.5<0,1>Smoothness
+slider4:gain_reduction=0<0,1>Gain reduction
+
+// Our interpolation is broken, we're missing pre-delay...
+//slider6:interpolation_milliseconds=0<0,50,1>Interpolation (ms)
+//slider7:debug=0<0,1,1{Off, On}>Debug
 
 in_pin:left input
 in_pin:right input
@@ -11,91 +18,185 @@ out_pin:right output
 
 options:gfx_hz=75
 @init
-ext_midi_bus = 1.0;
-midi_bus = 2;
+ext_midi_bus = 1;
 
-last_gain=10^(gain_db/20);
 cursor = 1.0; // 1.0 is no attenuation
-counter = 0;
 aux_volume = 0.0;
+
+function lerp(a, b, t) (
+  a * (1-t) + b*t;
+);
 
 // t is from 0 to 1
 function attenuation_at_time(t) (
-  out = t * 2;
-  //out = 1 + tan(1.6+t*3.1);
+  t -= shape_offset / 2;
 
-  /*out = 0.0;
-  t > 0.5 ? (
-    out = 1.0;
-  );*/
+  shape_preset == 0 ? ( // Fast end
+    out = pow(t + 0.5, (1- shape_smoothness* 0.89)*80);
+    t < 0.0 ? (
+      out = 0.0;
+    );
+  );
+
+  shape_preset == 1 ? ( // Square (continuous)
+    out = 0.0;
+
+    D = pow(shape_smoothness, 4);
+    out = 0.5 + 0.5 * (1 / atan(1/D)) * atan(sin(2 * $pi * (1-t)) / D);
+    t > 0.75 ? (
+      out = 1.0;
+    );
+    
+    t < 0.25 ? (
+      out = 0.0;
+    );
+  );
+
+  shape_preset == 2 ? ( // Linear
+    v = 2 + pow(1-shape_smoothness, 2) * 32;
+
+    our_t = t - 0.5;
+    out = v * (our_t + 1 / v);
+    out /= 2;
+  );
 
   max(0.0, min(1.0, out)); // Clamped output
 );
 
-@slider
-next_gain=10^(gain_db/20);
-
 @block
-d_gain = (next_gain - last_gain)/samplesblock;
+interpolation_samples = interpolation_milliseconds / 1000 * srate; // 20 milliseconds
+
+// FIXME: Add pre-delay to offset the volume interpolation
+//pdc_delay = lookahead_millis / 1000 * srate;
+//pdc_bot_ch=0; pdc_top_ch=2; // Delays the first two channels (spl0/spl1).
+//pdc_midi = 1.0;
 
 while (midirecv(offset, msg, note, velocity)) (
   type = msg & 0xF0;
   chan = msg & 0x0F;
 
   // MIDI Note-on event, reset the cursor
-  chan == 2 && type == 0x90 && velocity > 0 ? (
+  chan == 15 && type == 0x90 && velocity > 0 ? (
     cursor = 0;
   );
 
-  //midisend(offset, msg, note, velocity);
+  midisend(offset, msg, note, velocity);
 );
 
 @gfx
-gfx_r = 1.0;
-gfx_g = 1.0;
+// Three vertical lines
+gfx_r = 0.1;
+gfx_g = 0.1;
+gfx_b = 0.1;
+x_step = 0.25 * (gfx_w - OFFSET * 2);
+x = x_step;
+y = OFFSET;
+loop(3,
+  gfx_line(x + OFFSET, OFFSET, x + OFFSET, gfx_h - OFFSET);
+  x += x_step;
+);
+// Horizontal line in the middle
+gfx_line(OFFSET, gfx_h/2, gfx_w-OFFSET, gfx_h/2);
+
+gfx_r = 0.4 + min(0.6, 0.2 * max(0, (1 - 2*cursor)));
+gfx_g = 0.4 + min(0.6, 0.2 * max(0, (1 - 2*cursor)));
 gfx_b = 0.0;
 
 OFFSET = 10;
 SCALE_X = gfx_w - OFFSET * 2;
 SCALE_Y = gfx_h - OFFSET * 2;
-SAMPLE_COUNT = 400;
+SAMPLE_COUNT = 200;
 
 last_x = OFFSET;
 last_y = OFFSET + SCALE_Y;
 
 gfx_clear = -0.0;
+
+// Debug square in the top-left
+debug == 1 ? (
+  brightness = 1 - cursor;
+  gfx_r = brightness;
+  gfx_g = brightness;
+  gfx_b = brightness;
+  gfx_rect(0, 0, 50, 50, 1);
+  gfx_r = 0.4 + min(0.6, 0.2 * max(0, (1 - 2*cursor)));
+  gfx_g = 0.4 + min(0.6, 0.2 * max(0, (1 - 2*cursor)));
+  gfx_b = 0.0;
+);
+
+// The volume graph
 i = 0;
 loop(SAMPLE_COUNT,
-  i += 1;
+  //i += 1;
   gfx_x = i / SAMPLE_COUNT;
   gfx_y = 1 - attenuation_at_time(i / SAMPLE_COUNT);
 
   gfx_x = OFFSET + SCALE_X * gfx_x;
   gfx_y = OFFSET + SCALE_Y * gfx_y;
 
-  gfx_line(last_x, last_y, gfx_x, gfx_y, 1.0);
+  i != 0 ? (
+    gfx_line(last_x, last_y, gfx_x, gfx_y, 1.0);
+  );
   last_x = gfx_x;
   last_y = gfx_y;
+  i += 1;
 );
+
+// Blue moving motion-blurred circles
 gfx_x = 0;
 gfx_y = 0;
-gfx_circle(OFFSET + SCALE_X * cursor, OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor)), 5.0, 1.0);
 
-brightness = 1 - cursor;
-gfx_r = brightness;
-gfx_g = brightness;
-gfx_b = brightness;
-gfx_rect(0, 0, 50, 50, 1);
+r = 0;
+g = 0.6 + max(0, min(0.4, 1 - 12*cursor));
+b = 1;
+gfx_r = r;
+gfx_g = g;
+gfx_b = b;
+MOTION_BLUR_COUNT = 20;
+cursor == 1 ? (
+  gfx_circle(OFFSET + SCALE_X * (cursor), OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor)), 5.0, 1.0);
+) : (
+  i = 0.032;
+  j = MOTION_BLUR_COUNT;
+  loop(MOTION_BLUR_COUNT,
+    j -= 1;
+    cursor > 0.1 && j != MOTION_BLUR_COUNT ? (
+      gfx_r = r;
+      gfx_g = g / sqrt(j+1);
+      gfx_b = b / sqrt(j+1);
+    ) : (
+      gfx_r = r;
+      gfx_g = g;
+      gfx_b = b;
+    );
+
+    gfx_circle(OFFSET + SCALE_X * (cursor - i), OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor - i)), 5.0, 1.0);
+    
+    i -= 0.032 / MOTION_BLUR_COUNT;
+  );
+);
 
 @sample
-spl0 *= attenuation_at_time(cursor);
-spl1 *= attenuation_at_time(cursor);
+cursor == 0 ? ( // Cursor was reset, let's smoothly interpolate the volume
+  interpolate_toward_zero_counter = interpolation_samples;
+  from_attenuation = attenuation;
 
-cursor += 2 / srate; // 1 bar
+  // FIXME: This is not correct. We end up smoothness_milliseconds into the function, not 0ms in.
+  // However, if we add pre-delay, this would be the correct behaviour
+  to_attenuation = attenuation_at_time(0);
+);
+
+attenuation = attenuation_at_time(cursor);
+
+interpolate_toward_zero_counter = max(0, interpolate_toward_zero_counter - 1);
+interpolate_toward_zero_counter > 0 ? (
+  attenuation = lerp(from_attenuation, to_attenuation, 1 - interpolate_toward_zero_counter / interpolation_samples);
+);
+
+spl0 *= min(1.0, attenuation + gain_reduction);
+spl1 *= min(1.0, attenuation + gain_reduction);
+
+cursor += (tempo / 60) / srate; // 1 bar
 cursor > 1 ? (
   cursor = 1;
 );
-
-spl0 *= last_gain;
-spl1 *= last_gain;
-last_gain += d_gain;
