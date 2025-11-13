@@ -1,0 +1,101 @@
+desc:Kiva Kickstart
+// Send your midi channel to Bus 2 (B2) !
+
+slider1:gain_db=0<-150,12,1>gain (dB)
+slider2:lpf_cutoff=0.4<0.00001,0.0005,0.00001>Cutoff
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+options:gfx_hz=75
+@init
+ext_midi_bus = 1.0;
+midi_bus = 2;
+
+last_gain=10^(gain_db/20);
+cursor = 1.0; // 1.0 is no attenuation
+counter = 0;
+aux_volume = 0.0;
+
+// t is from 0 to 1
+function attenuation_at_time(t) (
+  out = t * 2;
+  //out = 1 + tan(1.6+t*3.1);
+
+  /*out = 0.0;
+  t > 0.5 ? (
+    out = 1.0;
+  );*/
+
+  max(0.0, min(1.0, out)); // Clamped output
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+while (midirecv(offset, msg, note, velocity)) (
+  type = msg & 0xF0;
+  chan = msg & 0x0F;
+
+  // MIDI Note-on event, reset the cursor
+  chan == 2 && type == 0x90 && velocity > 0 ? (
+    cursor = 0;
+  );
+
+  //midisend(offset, msg, note, velocity);
+);
+
+@gfx
+gfx_r = 1.0;
+gfx_g = 1.0;
+gfx_b = 0.0;
+
+OFFSET = 10;
+SCALE_X = gfx_w - OFFSET * 2;
+SCALE_Y = gfx_h - OFFSET * 2;
+SAMPLE_COUNT = 400;
+
+last_x = OFFSET;
+last_y = OFFSET + SCALE_Y;
+
+gfx_clear = -0.0;
+i = 0;
+loop(SAMPLE_COUNT,
+  i += 1;
+  gfx_x = i / SAMPLE_COUNT;
+  gfx_y = 1 - attenuation_at_time(i / SAMPLE_COUNT);
+
+  gfx_x = OFFSET + SCALE_X * gfx_x;
+  gfx_y = OFFSET + SCALE_Y * gfx_y;
+
+  gfx_line(last_x, last_y, gfx_x, gfx_y, 1.0);
+  last_x = gfx_x;
+  last_y = gfx_y;
+);
+gfx_x = 0;
+gfx_y = 0;
+gfx_circle(OFFSET + SCALE_X * cursor, OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor)), 5.0, 1.0);
+
+brightness = 1 - cursor;
+gfx_r = brightness;
+gfx_g = brightness;
+gfx_b = brightness;
+gfx_rect(0, 0, 50, 50, 1);
+
+@sample
+spl0 *= attenuation_at_time(cursor);
+spl1 *= attenuation_at_time(cursor);
+
+cursor += 2 / srate; // 1 bar
+cursor > 1 ? (
+  cursor = 1;
+);
+
+spl0 *= last_gain;
+spl1 *= last_gain;
+last_gain += d_gain;
