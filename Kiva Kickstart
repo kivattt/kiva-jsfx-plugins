@@ -1,6 +1,8 @@
 desc:Kiva Kickstart
 
 // You need to send MIDI to Bus 2, channel 16 (2/16) for this plugin to work
+// MIDI velocity is used to control speed.
+// Max velocity (127) is normal speed, lower velocities increase the speed.
 
 slider1:shape_preset=0<0,3,1{Fast end, Square (continuous), Linear}>Shape
 slider2:shape_offset=0<-1,1>Offset
@@ -8,7 +10,7 @@ slider3:shape_smoothness=0.5<0,1>Smoothness
 slider4:gain_reduction=0<0,1>Gain reduction
 
 // Our interpolation is broken, we're missing pre-delay...
-//slider6:interpolation_milliseconds=0<0,50,1>Interpolation (ms)
+slider6:interpolation_milliseconds=0<0,50,1>Interpolation (ms)
 //slider7:debug=0<0,1,1{Off, On}>Debug
 
 in_pin:left input
@@ -21,6 +23,7 @@ options:gfx_hz=75
 ext_midi_bus = 1;
 
 cursor = 1.0; // 1.0 is no attenuation
+speed = 1.0; // Speed
 aux_volume = 0.0;
 
 function lerp(a, b, t) (
@@ -28,8 +31,9 @@ function lerp(a, b, t) (
 );
 
 // t is from 0 to 1
-function attenuation_at_time(t) (
+function attenuation_at_time(t, speed_in) (
   t -= shape_offset / 2;
+  t *= speed_in;
 
   shape_preset == 0 ? ( // Fast end
     out = pow(t + 0.5, (1- shape_smoothness* 0.89)*80);
@@ -78,6 +82,7 @@ while (midirecv(offset, msg, note, velocity)) (
   // MIDI Note-on event, reset the cursor
   chan == 15 && type == 0x90 && velocity > 0 ? (
     cursor = 0;
+    speed = 1 / (velocity / 127);
   );
 
   midisend(offset, msg, note, velocity);
@@ -107,9 +112,6 @@ SCALE_X = gfx_w - OFFSET * 2;
 SCALE_Y = gfx_h - OFFSET * 2;
 SAMPLE_COUNT = 200;
 
-last_x = OFFSET;
-last_y = OFFSET + SCALE_Y;
-
 gfx_clear = -0.0;
 
 // Debug square in the top-left
@@ -125,11 +127,13 @@ debug == 1 ? (
 );
 
 // The volume graph
+last_x = OFFSET;
+last_y = OFFSET + SCALE_Y;
 i = 0;
 loop(SAMPLE_COUNT,
   //i += 1;
   gfx_x = i / SAMPLE_COUNT;
-  gfx_y = 1 - attenuation_at_time(i / SAMPLE_COUNT);
+  gfx_y = 1 - attenuation_at_time(i / SAMPLE_COUNT, speed);
 
   gfx_x = OFFSET + SCALE_X * gfx_x;
   gfx_y = OFFSET + SCALE_Y * gfx_y;
@@ -154,7 +158,7 @@ gfx_g = g;
 gfx_b = b;
 MOTION_BLUR_COUNT = 20;
 cursor == 1 ? (
-  gfx_circle(OFFSET + SCALE_X * (cursor), OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor)), 5.0, 1.0);
+  gfx_circle(OFFSET + SCALE_X * (cursor), OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor, speed)), 5.0, 1.0);
 ) : (
   i = 0.032;
   j = MOTION_BLUR_COUNT;
@@ -170,7 +174,7 @@ cursor == 1 ? (
       gfx_b = b;
     );
 
-    gfx_circle(OFFSET + SCALE_X * (cursor - i), OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor - i)), 5.0, 1.0);
+    gfx_circle(OFFSET + SCALE_X * (cursor - i), OFFSET + SCALE_Y * (1 - attenuation_at_time(cursor - i, speed)), 5.0, 1.0);
     
     i -= 0.032 / MOTION_BLUR_COUNT;
   );
@@ -183,10 +187,10 @@ cursor == 0 ? ( // Cursor was reset, let's smoothly interpolate the volume
 
   // FIXME: This is not correct. We end up smoothness_milliseconds into the function, not 0ms in.
   // However, if we add pre-delay, this would be the correct behaviour
-  to_attenuation = attenuation_at_time(0);
+  to_attenuation = attenuation_at_time(0, speed);
 );
 
-attenuation = attenuation_at_time(cursor);
+attenuation = attenuation_at_time(cursor, speed);
 
 interpolate_toward_zero_counter = max(0, interpolate_toward_zero_counter - 1);
 interpolate_toward_zero_counter > 0 ? (
