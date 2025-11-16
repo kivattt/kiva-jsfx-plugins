@@ -1,6 +1,8 @@
 desc:Kiva Dirac Spike generator
 
 slider1:gain_db=-30<-150,0,1>gain (dB)
+slider2:hz=10<1,800,1>Hertz
+slider3:hold=1<1,64,1>duty cycle/hold (samples)
 
 in_pin:left input
 in_pin:right input
@@ -10,6 +12,7 @@ out_pin:right output
 @init
 last_gain=10^(gain_db/20);
 i = 0;
+hold_counter = 0;
 
 @slider
 next_gain=10^(gain_db/20);
@@ -18,13 +21,18 @@ next_gain=10^(gain_db/20);
 d_gain = (next_gain - last_gain)/samplesblock;
 
 @sample
-i % (srate / 20) == 0 ? (
+i % (srate / hz) == 0 ? (
+  hold_counter = hold;
+) : (
+  hold_counter -= 1;
+);
+
+hold_counter > 0 ? (
   spl0 = 1.0;
   spl1 = 1.0;
 ) : (
   spl0 = 0.0;
   spl1 = 0.0;
-
 );
 
 i += 1;
