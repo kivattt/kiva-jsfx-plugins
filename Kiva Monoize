@@ -16,7 +16,7 @@ N_BUTTONS = 5;
 
 @block
 
-@gfx
+@gfx 555 111 // Height is 111 because it won't give me 110 for some reason.
 control_start(0, "black");
 //ui_fontface("Inter");
 ui_fontface("JetBrains Mono");
