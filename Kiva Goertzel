@@ -9,14 +9,11 @@ out_pin:left output
 out_pin:right output
 
 @init
+M_E = 2.71828182845904523536;
 last_gain=10^(gain_db/20);
 
 function process(sample, lastSample, lastLastSample) (
-  /*M_E = 2.71828182845904523536;
-  a = sample + 2*cos(param) * lastSample - lastLastSample;
-  j = 1;
-  b = a - pow(M_E, -(j*param)) * lastSample;
-  b;*/
+  sample + 2*cos(param) * lastSample - lastLastSample - pow(M_E, -param) * lastSample;
 );
 
 @slider
