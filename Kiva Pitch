@@ -1,0 +1,118 @@
+desc:Kiva Pitch
+
+slider1:gain_db=0<-150,12,1>gain (dB)
+slider2:mute=0<0,1,1{Unmute, Mute}>Output
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_gain=10^(gain_db/20);
+
+fftSize = 2048;
+//fftBuffer = 2 * fftSize;
+//fftBufferAudible = 2 * fftSize;
+
+// ptrs
+fftBufferLeft = 0;
+fftBufferAudibleLeft = fftBufferLeft + 2*fftSize+1;
+//fftBufferAudibleLeft = 0;
+
+fftBufferRight = fftBufferAudibleLeft + 2*fftSize+1;
+fftBufferAudibleRight = fftBufferRight + 2*fftSize+1;
+
+workBufLeft = fftBufferAudibleRight + 2*fftSize+1;
+workBufRight = workBufLeft + 2*fftSize+1;
+
+i = 0;
+loop(2 * fftSize,
+  fftBufferLeft[i] = 0.0;
+  fftBufferRight[i] = 0.0;
+  
+  fftBufferAudibleLeft[i] = 0.0;
+  fftBufferAudibleRight[i] = 0.0;
+  
+  workBufLeft[i] = 0.0;
+  workBufRight[i] = 0.0;
+  i += 1;
+);
+
+@slider
+next_gain=10^(gain_db/20);
+
+@block
+d_gain = (next_gain - last_gain)/samplesblock;
+
+@sample
+//loop(fftSize,
+    fftBufferLeft[2 * index + 0] = spl0; // real
+    fftBufferLeft[2 * index + 1] = 0.0;  // imag
+    
+    fftBufferRight[2 * index + 0] = spl1; // real
+    fftBufferRight[2 * index + 1] = 0.0;  // imag
+//);
+
+spl0 = fftBufferAudibleLeft[2 * index + 0];
+spl1 = spl0;
+//spl1 = fftBufferAudibleRight[2 * index + 0];
+
+spl0 /= 800.0;
+spl1 /= 800.0;
+
+index += 1;
+
+index > fftSize ? (
+  /*spl0 = 0;
+  spl1 = 0;*/
+  index = 0;
+  
+  fft(fftBufferLeft, fftSize);
+  fft_permute(fftBufferLeft, fftSize); // Sort the freqs
+  fft(fftBufferRight, fftSize);
+  fft_permute(fftBufferRight, fftSize); // Sort the freqs
+ 
+  
+  
+  // CLEAR WORK BUFFERS
+  i = 0;
+  loop(2 * fftSize,
+    workBufLeft[i] = 0.0;
+    workBufRight[i] = 0.0;
+    i += 1;
+  );
+  
+  i = 0;
+  add = 0;
+  mul = 2.0;
+  loop(2 * fftSize / mul, // we don't want aliasing above nyquist
+    //j = 2*i;
+    j = i;
+    workBufLeft[add+j*mul] = fftBufferLeft[j];
+    workBufRight[add+j*mul] = fftBufferRight[j];
+    i += 1;
+  );
+  
+  i = 0;
+  loop(2*fftSize,
+    fftBufferLeft[i] = workBufLeft[i];
+    fftBufferRight[i] = workBufRight[i];
+    i += 1;
+  );
+  
+  fft_ipermute(fftBufferLeft, fftSize);
+  ifft(fftBufferLeft, fftSize);
+  fft_ipermute(fftBufferRight, fftSize);
+  ifft(fftBufferRight, fftSize);
+
+  i = 0;
+  loop(fftSize,
+    fftBufferAudibleLeft[2 * i] = fftBufferLeft[2 * i];
+    fftBufferAudibleLeft[2 * i + 1] = fftBufferLeft[2 * i + 1];
+    
+    fftBufferAudibleRight[2 * i] = fftBufferRight[2 * i];
+    fftBufferAudibleRight[2 * i + 1] = fftBufferRight[2 * i + 1];
+    i += 1;
+  );
+);
