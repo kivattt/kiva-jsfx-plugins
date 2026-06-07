@@ -1,9 +1,10 @@
 desc:Kiva 2nd harmonic distortion
 
-slider1:choice=0<0,2,1{A,B,C,D,E}>Choice
+slider1:choice=3<0,2,1{A,B,C,D,E}>Choice
 slider2:drive_db=0<-20,50,0.1>drive (dB)
 
-slider4:gain_db=0<-20,24,0.1>output (dB)
+slider4:gain_db=-6<-20,28,0.1>output (dB)
+slider6:mode=0<0,2,1{L/R,M/S}>Mode
 
 in_pin:left input
 in_pin:right input
@@ -98,6 +99,14 @@ d_drive = (next_drive - last_drive)/samplesblock;
 spl0 *= last_drive;
 spl1 *= last_drive;
 
+// Mid/Side mode
+mode == 1 ? (
+  mid = 0.5 * (spl0 + spl1);
+  side = 0.5 * (spl0 - spl1);
+  spl0 = mid;
+  spl1 = side;
+);
+
 choice == 0 ? (
   spl0 = process_A(spl0);
   spl1 = process_A(spl1);
@@ -119,6 +128,14 @@ choice == 0 ? (
       );
     );
   );
+);
+
+// Mid/Side mode
+mode == 1 ? (
+  left = spl0 + spl1;
+  right = spl0 - spl1;
+  spl0 = left;
+  spl1 = right;
 );
 
 spl0 /= last_drive;
