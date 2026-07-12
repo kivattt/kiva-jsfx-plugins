@@ -56,7 +56,6 @@ function process(sample, isRight) (
   );
 
   sample *= last_drive;
-  
   abs(sample) > threshold ? (
     isRight == 0 ? (
       clip_light_left = 1;
