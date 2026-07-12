@@ -1,0 +1,161 @@
+desc:Kiva Saturate
+
+slider1:choice=0<0,4,1{third,third hard,second,dumb}>Choice
+slider2:drive_db=0<-20,50,1>drive (dB)
+
+slider4:output_db=-6<-20,40,1>output (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_drive=10^(drive_db/20);
+last_output=10^(output_db/20);
+
+function third(x) (
+  atan(5 * x) / 2;
+);
+
+function third_hard(x) (
+  thres = 1.0 / last_drive;
+  
+  x *= 1.2;
+  
+  out = x;
+  x > thres ? (
+    out = thres;
+  );
+  x < -thres ? (
+    out = -thres;
+  );
+
+  // 9 slight, 12 too loud, 18 too loud, 23 too loud, 26 too loud, 30 slight loud, 35 good
+  range_dB = 7; // 7dB plus/minus range where we attenuate the volume, centered around drive = 20 dB point
+  bell = max(0.0, 1 - pow((1 / range_dB) * (last_drive - 10.0 /* So that x=0 when drive (dB) == 20.0 dB */), 4));
+  
+  out = 1.8 * out * max(1.0, last_drive / 2.8);
+  out /= 1 + bell * 0.8;
+  out;
+);
+
+function clamp(x, mini, maxi) (
+  out = x;
+  
+  x < mini ? (
+    out = mini;
+  );
+  x > maxi ? (
+    out = maxi;
+  );
+
+  out;
+);
+
+// Runs the third-order distortion with a DC bias based on the
+// input volume (compression)
+function second(x) instance(rms, rmsslow, output_hpf) (
+  c = 0.9996; // Amount we divide RMS by each sample
+  this.rms += x*x;
+  this.rms *= c;
+  c2 = 0.0004; // 1st order lowpass cutoff for slower RMS
+  this.rmsslow += (this.rms - this.rmsslow) * c2;
+
+  valEarly = sqrt(this.rmsslow) * (0.5/c);
+  val = clamp(valEarly, 0, 10) / 10;
+  val = 1 - val; // Turn compression into expansion instead
+  val *= 0.05;
+  //out = (val - 0.5) * 12.0; // DEBUGGING
+
+  out = third(x + val * last_drive);
+  
+  // Very slight HPF on the output
+  hpf_cutoff = 0.001;
+  output_hpf += (out - output_hpf) * hpf_cutoff;
+  out -= output_hpf;
+  
+  out;
+);
+
+// Cool hardclipper at low drive
+// Digital trash at mid drive
+// Clicky at high drive
+function dumb(x) (
+  x *= 2.0;
+
+  thres = 1.0 / last_drive;
+
+  out = x;
+  x > thres ? (
+    out = thres;
+  );
+  x < -thres ? (
+    out = -thres;
+  );
+
+  diff = abs(out - x);
+  out += x * (diff / 4.0);
+
+  // Try to match gain of other choices
+  last_drive > 1.0 ? (
+    out /= max(1.0, pow(last_drive-5.0, 1.25));
+  );
+
+  // Output clipper to be safe
+  thres2 = 2.0;
+  out > thres2 ? (
+    out = thres2;
+  );
+  out < -thres2 ? (
+    out = -thres2;
+  );
+
+  out;
+);
+
+@slider
+next_drive=10^(drive_db/20);
+next_output=10^(output_db/20);
+
+@block
+d_drive = (next_drive - last_drive)/samplesblock;
+d_output = (next_output - last_output)/samplesblock;
+
+@sample
+spl0 *= last_drive;
+spl1 *= last_drive;
+
+// Third
+choice == 0 ? (
+  spl0 = third(spl0);
+  spl1 = third(spl1);
+);
+
+// Third (hardclip)
+choice == 1 ? (
+  spl0 = third_hard(spl0);
+  spl1 = third_hard(spl1);
+);
+
+// Second
+choice == 2 ? (
+  spl0 = left.second(spl0);
+  spl1 = right.second(spl1);
+);
+
+// Dumb
+choice == 3 ? (
+  spl0 = dumb(spl0);
+  spl1 = dumb(spl1);
+);
+
+
+spl0 /= last_drive;
+spl1 /= last_drive;
+
+spl0 *= last_output;
+spl1 *= last_output;
+
+last_drive += d_drive;
+last_output += d_output;
