@@ -4,6 +4,7 @@ slider1:nSignals=2<2,20,2>Voices
 slider2:octave=0<-3,3,1>Octave
 slider3:waveshape=Saw<0,2,1{Saw,Square,Sine}>Waveshape
 slider4:gain_db=-24<-150,12,1>Gain (dB)
+slider5:phase_rand_amount=0<0,1,0.001>Phase random %
 
 in_pin:left input
 in_pin:right input
@@ -16,6 +17,7 @@ noteOn = 0;
 note = 0;
 i = 0;
 signals[0] = 0;
+current_phase_offset = 0;
 
 function fmod(a, b)
 (
@@ -26,7 +28,6 @@ function sawtooth_wave(signal)
 (
   1 - fmod(signal / $pi, 2);
 );
-
 
 function square_wave(signal)
 (
@@ -56,6 +57,8 @@ while (midirecv(offset, msg, note, velocity)) (
     noteOn = 1;
     i = 0;
     note = 440 * pow(2, (note-69) / 12);
+    
+    current_phase_offset = rand() * 50 * phase_rand_amount;
   );
     
   type == 0x80 ? (
@@ -72,6 +75,8 @@ loop(nSignals,
   s = 0;
   input = i/srate*2760 * note/440 * offset;
   input *= 2 ^ octave;
+  
+  input += current_phase_offset;
   
   waveshape == 0 ? ( // Saw
     s = sawtooth_wave(input);
