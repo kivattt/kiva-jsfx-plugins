@@ -1,0 +1,120 @@
+desc:Kiva CrossoverThing
+
+slider1:crossover_low_hertz=200<50,3000,1>Crossover low freq
+slider2:crossover_high_hertz=3000<200,6000,1>Crossover high freq
+slider3:crossover_db_per_octave=0<0,1,1{12dB per octave,24dB per octave}>Crossover dB per octave
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+// Calculates the coefficients for a lowpass filter, 12dB per octave
+function get_12db_lpf_coefficients(cutoff_hertz, Q) (
+  K = tan($pi * cutoff_hertz / srate);
+  norm = 1.0 / (1.0 + K/Q + K*K);
+  
+  this.a0 = K*K * norm;
+  this.a1 = 2.0 * this.a0;
+  this.a2 = this.a0;
+  this.b0 = 1.0; // constant
+  this.b1 = 2.0 * (K*K - 1.0) * norm;
+  this.b2 = (1.0 - K/Q + K*K) * norm;
+);
+
+// Calculates the coefficients for a highpass filter, 12dB per octave
+function get_12db_hpf_coefficients(cutoff_hertz, Q) (
+  K = tan($pi * cutoff_hertz / srate);
+  norm = 1.0 / (1.0 + K/Q + K*K);
+  
+  this.a0 = norm;
+  this.a1 = -2.0 * this.a0;
+  this.a2 = this.a0;
+  this.b0 = 1.0; // constant
+  this.b1 = 2.0 * (K*K - 1.0) * norm;
+  this.b2 = (1.0 - K/Q + K*K) * norm;
+);
+
+function biquad(sample) instance(x1, x2, x3, y1, y2, y3) (
+  a0 = this.a0;
+  a1 = this.a1;
+  a2 = this.a2;
+  b0 = this.b0;
+  b1 = this.b1;
+  b2 = this.b2;
+
+  x1 = sample;
+  
+  y1 = a0*x1 + a1*x2 + a2*x3
+    - b1*y2 - b2*y3;
+  x3 = x2;
+  x2 = x1;
+  y3 = y2;
+  y2 = y1;
+  out = y1;
+  
+  out;
+);
+
+// Gives a 12db per octave lowpass-filtered output
+function crossover_low(sample, low_cutoff_hertz) (
+  // Q of 1 / sqrt(2) yields no resonance
+  Q = 0.7071067811865475;
+
+  this.get_12db_lpf_coefficients(low_cutoff_hertz, Q);
+  this.biquad(sample);
+);
+
+// Gives a 12db per octave highpass-filtered output
+function crossover_high(sample, high_cutoff_hertz) (
+  // Q of 1 / sqrt(2) yields no resonance
+  Q = 0.7071067811865475;
+
+  this.get_12db_hpf_coefficients(high_cutoff_hertz, Q);
+  this.biquad(sample);
+);
+
+@sample
+// Crossover frequencies shouldn't overlap.
+crossover_high_hertz < crossover_low_hertz ? (
+  crossover_high_hertz = crossover_low_hertz;
+);
+
+// TODO: Only recalculate coefficients when the crossover low/high frequencies changed
+
+left_sample = spl0;
+right_sample = spl1;
+
+crossover_db_per_octave == 0 ? ( // 12 dB per octave
+  // Crossover low band
+  l_low_sample = l_low.crossover_low(left_sample, crossover_low_hertz);
+  r_low_sample = r_low.crossover_low(right_sample, crossover_low_hertz);
+  
+  // Crossover high band
+  l_high_sample = l_high.crossover_high(left_sample, crossover_high_hertz);
+  r_high_sample = r_high.crossover_high(right_sample, crossover_high_hertz); 
+) : ( // 24 dB per octave (we simply run the filters twice, in series)
+  // Crossover low band
+  l_low_sample = l_low1.crossover_low(left_sample, crossover_low_hertz);
+  l_low_sample = l_low2.crossover_low(l_low_sample, crossover_low_hertz);
+  r_low_sample = r_low1.crossover_low(right_sample, crossover_low_hertz);
+  r_low_sample = r_low2.crossover_low(r_low_sample, crossover_low_hertz);
+
+  // Crossover high band
+  l_high_sample = l_high1.crossover_high(left_sample, crossover_high_hertz);
+  l_high_sample = l_high2.crossover_high(l_high_sample, crossover_high_hertz);
+  r_high_sample = r_high1.crossover_high(right_sample, crossover_high_hertz);
+  r_high_sample = r_high2.crossover_high(r_high_sample, crossover_high_hertz);
+);
+
+// Crossover mid band
+l_mid_sample = left_sample - (l_low_sample + l_high_sample);
+r_mid_sample = right_sample - (r_low_sample + r_high_sample);
+
+// Sum all the crossover bands to perfectly reconstruct the original signal
+spl0 = l_low_sample + l_mid_sample + l_high_sample;
+spl1 = r_low_sample + r_mid_sample + r_high_sample;
+
+// We are now left with an identical signal as the output :D
+// Except, you can do whatever processing you'd like to the individual bands.
