@@ -1,9 +1,11 @@
 desc:Kiva Phasefilter
 
-slider1:num_allpass_filters=80<0,200,1>Number of allpass filters
-slider2:freq=200<20,20000,1:log>Frequency (hertz)
-slider3:Q=0.707<0.1,4.0,0.01>Q
-slider4:gain_db=0<-20,12,1>gain (dB)
+slider1:num_allpass_filters=40<0,200,1>Number of allpass filters
+slider2:freq=1000<20,20000,1:log>Frequency (hertz)
+slider3:Q=0.707<0.01,16.0,0.01:log>Q
+slider4:order=2<1,2,1>Filter order (1st ignores Q)
+
+slider6:gain_db=0<-20,12,1>gain (dB)
 
 in_pin:left input
 in_pin:right input
@@ -12,12 +14,24 @@ out_pin:right output
 
 @init
 last_gain=10^(gain_db/20);
-Q = 1 / sqrt(2);
 
 allpass_filter_states_array = 0;
 
+// Calculates the coefficients for a 1st order allpass filter
+function get_1st_order_apf_coefficients(cutoff_hertz, Q) (
+  K = tan($pi * cutoff_hertz / srate);
+  norm = 1.0 / (1.0 + K/Q + K*K);
+
+  this.a0 = (1.0 - K) / (1 + K);
+  this.a1 = -1.0;
+  this.a2 = 0.0;
+  this.b0 = 1.0;
+  this.b1 = -this.a0;
+  this.b2 = 0.0;
+);
+
 // Calculates the coefficients for a 2nd order allpass filter
-function get_12db_apf_coefficients(cutoff_hertz, Q) (
+function get_2nd_order_apf_coefficients(cutoff_hertz, Q) (
   K = tan($pi * cutoff_hertz / srate);
   norm = 1.0 / (1.0 + K/Q + K*K);
 
@@ -29,7 +43,11 @@ function get_12db_apf_coefficients(cutoff_hertz, Q) (
   this.b2 = this.a0;
 );
 
-apf.get_12db_apf_coefficients(freq, Q);
+order == 1 ? ( // 1st order
+  apf.get_1st_order_apf_coefficients(freq, Q);
+) : ( // 2nd order
+  apf.get_2nd_order_apf_coefficients(freq, Q);
+);
 
 function biquad(sample, state_ptr) /*local(x2, x3, y2, y3)*/ (
   // x1 and y1 don't need to be stored as state
@@ -65,7 +83,12 @@ function biquad(sample, state_ptr) /*local(x2, x3, y2, y3)*/ (
 
 @slider
 next_gain=10^(gain_db/20);
-apf.get_12db_apf_coefficients(freq, Q);
+
+order == 1 ? ( // 1st order
+  apf.get_1st_order_apf_coefficients(freq, Q);
+) : ( // 2nd order
+  apf.get_2nd_order_apf_coefficients(freq, Q);
+);
 
 @block
 d_gain = (next_gain - last_gain)/samplesblock;
