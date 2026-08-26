@@ -1,16 +1,37 @@
 desc:Kiva Synth
 
-slider1:nSignals=2<2,20,2>Voices
+slider1:nSignals=2<1,80,1>Voices
 slider2:octave=0<-3,3,1>Octave
-slider3:waveshape=Saw<0,2,1{Saw,Square,Sine}>Waveshape
+slider3:waveshape=Saw<0,3,1{Saw,Square,Sine,Pulser}>Waveshape
 slider4:gain_db=-24<-150,12,1>Gain (dB)
-// Only really useful when manually doubling this synth on another channel.
-slider5:phase_rand_amount=0<0,1,0.001>Phase random %
+// phase_rand_amount is only really useful when manually doubling this synth on another channel.
+slider5:phase_rand_amount=0<0,1,0.001>Absolute phase random %
+slider6:voice_detune=0<0,1,0.001:log>Voice detune %
+
+//slider8:env_attack=0<0,2000,1>Attack (ms)
+slider9:env_decay=0<0,2000,1>Decay (ms)
+//slider10:env_sustain
+//slider11:env_release
+
+slider12:env_detune_amount=0<-32,32,0.001:log>Detune env. amount
+slider13:env_detune_length=2<0.01,16,0.001>Detune env. length (sec)
 
 in_pin:left input
 in_pin:right input
 out_pin:left output
 out_pin:right output
+
+/*
+TODO:
+
+- Multiple notes at a time
+
+- Make a seedable prng function so we can have deterministic random behaviour
+  based on timeline position
+
+- Amplitude envelope
+
+*/
 
 @init
 last_gain=10^(gain_db/20);
@@ -18,7 +39,28 @@ noteOn = 0;
 note = 0;
 i = 0;
 signals[0] = 0;
-current_phase_offset = 0;
+absolute_phase_offset = 0;
+
+time_since_last_noteon = 0;
+env_max_decay = 2000;
+env_level = 0;
+
+dt_offset = 100; // Has to be more than maximum nSignals, otherwise memory layout collision with signals[0]
+voice_detunes[dt_offset] = 0;
+
+function clip(x) (
+  out = x;
+
+  out > 1.0 ? (
+    out = 1.0;
+  );
+
+  out < -1.0 ? (
+    out = -1.0;
+  );
+  
+  out;
+);
 
 function fmod(a, b) (
   a - floor(a / b) * b;
@@ -40,48 +82,98 @@ function sine_wave(signal) (
   sin(signal);
 );
 
+function pulser(signal) (
+  out = 0;
+  
+  epsilon = 0.0001;
+  div = 256;
+
+  x = fmod(signal, $pi / div);
+  x >= -epsilon  && x <= epsilon ? (
+    out = 4; // This should've been like 1 or 2, but it's so quiet...
+  );
+
+  out;
+);
+
 @slider
 next_gain=10^(gain_db/20);
 
 @block
 d_gain = (next_gain - last_gain)/samplesblock;
 
-while (midirecv(offset, msg, note, velocity)) (
+while (midirecv(offset, msg, note_in, velocity)) (
   type = msg & 0xF0;
   chan = msg & 0x0F;
-  
+
   type == 0x90 && velocity > 0 ? (
+    time_since_last_noteon = 0;
     noteOn = 1;
     i = 0;
-    note = 440 * pow(2, (note-69) / 12);
-    
-    current_phase_offset = rand() * 50 * phase_rand_amount;
+    env_level = 1.0;
+    note = 440 * pow(2, (note_in-69) / 12);
+
+    absolute_phase_offset = rand() * 50 * phase_rand_amount;
+
+    detuneIdx = 0;
+    loop(nSignals,
+      voice_detunes[dt_offset+detuneIdx] = rand(1) / 8;
+      //voice_detunes[dt_offset+detuneIdx] = rand(1);
+      detuneIdx += 1;
+    );
   );
-    
+
   type == 0x80 ? (
     noteOn = 0;
   );
-  
+
   midisend(offset, msg, note, velocity);
 );
 
 @sample
 idx = 0;
+
+time_since_last_noteon += 1.0 / srate;
+
+env_decay != 0 ? ( // env_decay of zero means disabling decay altogether
+  env_level -= (1 / (env_decay / 1000)) / srate;
+  env_level < 0 ? (
+    env_level = 0;
+  );
+);
+
+//env_level /= max(1, 1 + 4.0 * log(env_max_decay - env_decay) / srate);
+
+sauce = voice_detunes[0];
+
 loop(nSignals,
   offset = 1 + ((idx-nSignals/2) / 256);
+  offset += voice_detunes[dt_offset+idx] * voice_detune;
+  enveloped_detune = min(1.0, time_since_last_noteon / env_detune_length);
+  env_detune_amount < 0 ? (
+    enveloped_detune = 1 - enveloped_detune;
+  );
+  enveloped_detune *= abs(env_detune_amount);
+  offset += voice_detunes[dt_offset+idx] * enveloped_detune; // Envelope'd detune
   s = 0;
   input = i/srate*2760 * note/440 * offset;
   input *= 2 ^ octave;
-  
-  input += current_phase_offset;
-  
+  //input *= 2 ^ (octave + floor(idx / 2));
+
+  input += absolute_phase_offset;
+
   waveshape == 0 ? ( // Saw
     s = sawtooth_wave(input);
   ) : (
     waveshape == 1 ? ( // Square
       s = square_wave(input);
-    ) : ( // Sine
+    ) : (
+      waveshape == 2 ? ( // Sine
         s = sine_wave(input);
+      ) : (
+        // Pulser
+        s = pulser(input);
+      );
     );
   );
 
@@ -92,14 +184,23 @@ loop(nSignals,
 signalLeft = 0;
 signalRight = 0;
 
-idx = 0;
-loop(nSignals/2,
-  signalLeft += signals[idx];
-  signalRight += signals[idx+1];
-  idx += 2;
+nSignals % 2 == 1 ? ( // Duplicate first voice on both channels
+  signalLeft = signals[0];
+  signalRight = signals[0];
+) : (
+  idx = nSignals % 2; // Start at the second voice (index 1) when odd number of voices
+  loop(nSignals,
+    idx % 2 == 0 ? (
+      signalLeft += signals[idx];
+    ) : (
+      signalRight += signals[idx];
+    );
+    idx += 1;
+  );
 );
-signalLeft /= nSignals/2;
-signalRight /= nSignals/2;
+
+signalLeft /= max(1, nSignals/2);
+signalRight /= max(1, nSignals/2);
 
 signalLeft *= last_gain;
 signalRight *= last_gain;
@@ -107,11 +208,15 @@ last_gain += d_gain;
 
 i += 1;
 
-noteOn == 1 ? (
-  spl0 = signalLeft;
-  spl1 = signalRight;
+env_decay != 0 ? (
+  spl0 = env_level * signalLeft;
+  spl1 = env_level * signalRight;
 ) : (
-  spl0 = 0;
-  spl1 = 0;
+  noteOn == 1 ? (
+    spl0 = signalLeft;
+    spl1 = signalRight;
+  ) : (
+    spl0 = 0;
+    spl1 = 0;
+  );
 );
-
