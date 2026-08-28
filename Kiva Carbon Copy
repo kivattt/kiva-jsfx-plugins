@@ -1,0 +1,226 @@
+desc:Kiva Carbon Copy
+
+slider1:param_delay=0.5<0,1,0.00001>Delay
+slider2:param_regen=0.2<0,1,0.00001>Regen
+slider3:param_cutoff=2500<1000,20000,1:log>Lowpass (hz)
+slider4:param_modulation=0<0,1,1{Off,On}>Modulation
+slider5:param_bbd_length=3<0,4,1{1024,2048,4096,8192,16384}>BBD quality
+
+slider7:param_dry_db=0<-100,6,0.1>Dry (dB)
+slider8:param_wet_db=-6<-100,6,0.1>Wet (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+last_param_dry_db = 10 ^ (param_dry_db / 20);
+last_param_wet_db = 10 ^ (param_wet_db / 20);
+
+lpf_Q = 1 / sqrt(2);
+
+last_param_bbd_length = param_bbd_length;
+
+function init_arrays() (
+  bbd_buffer_length = pow(2, 10 + param_bbd_length);
+
+  // Array pointers
+  coefficients_array = 0; // Length: 6
+  bbd_buffer_left = 6; // Length: bbd_buffer_length
+  bbd_buffer_right = 6 + bbd_buffer_length; // Length: bbd_buffer_length
+
+  // Zero out the arrays to avoid bbd_buffer_length switching noise
+  i = 0;
+  loop(bbd_buffer_length,
+    bbd_buffer_left[i] = 0;
+    bbd_buffer_right[i] = 0;
+    i += 1;
+  );
+);
+
+init_arrays();
+
+// Calculates the coefficients for a lowpass filter, 12dB per octave
+function get_12db_lpf_coefficients(coefficients_array, cutoff_hertz, Q) (
+  K = tan($pi * cutoff_hertz / srate);
+  norm = 1.0 / (1.0 + K/Q + K*K);
+
+  a0 = K*K * norm;
+  a1 = 2.0 * a0;
+  a2 = a0;
+  b0 = 1.0; // constant
+  b1 = 2.0 * (K*K - 1.0) * norm;
+  b2 = (1.0 - K/Q + K*K) * norm;
+  coefficients_array[0] = a0;
+  coefficients_array[1] = a1;
+  coefficients_array[2] = a2;
+  coefficients_array[3] = b0;
+  coefficients_array[4] = b1;
+  coefficients_array[5] = b2;
+);
+
+get_12db_lpf_coefficients(coefficients_array, param_cutoff, lpf_Q);
+
+function biquad(sample, coefficients_array) instance(x2, x3, y2, y3) (
+  a0 = coefficients_array[0];
+  a1 = coefficients_array[1];
+  a2 = coefficients_array[2];
+  b0 = coefficients_array[3];
+  b1 = coefficients_array[4];
+  b2 = coefficients_array[5];
+
+  x1 = sample;
+
+  y1 = a0*x1 + a1*x2 + a2*x3
+    - b1*y2 - b2*y3;
+  x3 = x2;
+  x2 = x1;
+  y3 = y2;
+  y2 = y1;
+  out = y1;
+
+  out;
+);
+
+function hardclip(sample, threshold) (
+  out = sample;
+  out > threshold ? (
+    out = threshold;
+  );
+
+  out < -threshold ? (
+    out = -threshold;
+  );
+
+  out;
+);
+
+function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array) instance(step_clock, read_index, write_index, mod_lfo, feedback_hpf, output_hpf) (
+  mod_lfo += 1 / srate;
+  mod_lfo >= 1.0 ? (
+    mod_lfo -= 1.0;
+
+    // For safety
+    mod_lfo >= 1.0 ? (
+      mod_lfo = 0.0;
+    );
+  );
+
+  modulation = 0;
+  modulation_enable != 0 ? (
+    // I want the modulation speed not to line up with the track BPM
+    magic_irrational_number = 2.4579160475349087; // Hardcoded modulation speed
+    modulation = sin(modulation_phase_offset + mod_lfo / (magic_irrational_number * modulation_speed_mul));
+    delay += 0.01 * modulation; // Hardcoded modulation amount
+    delay = max(0, delay); // Since modulation can offset negative, prevent negative delay value.
+  );
+
+  sample = this.input_lpf.biquad(sample, coefficients_array);
+
+  step_clock_high = 1 / bbd_buffer_length;
+
+  out = 0;
+
+  step_limit = 20;
+  step_limit = 40;
+  num_steps_done = 0;
+  while (step_clock <= 0 && num_steps_done < step_limit /* To avoid infinite loop, crashing REAPER */) (
+    num_steps_done += 1;
+
+    // Need to increment the write_index before writing,
+    // otherwise the output will be delayed the whole buffer length.
+    write_index += 1;
+    write_index >= bbd_buffer_length ? (
+      write_index = 0;
+    );
+
+    bbd_buffer[write_index] = sample;
+
+    step_clock += step_clock_high; // Reset the clock (carry)
+  );
+
+  num_steps_done >= step_limit ? (
+    step_clock = step_clock_high;
+  );
+
+  speed = 1 / delay; // Divide by zero is fine, since inf will hit the speed cap above
+  step_clock -= speed / srate;
+
+  read_index = write_index - bbd_buffer_length/2; // Has to be half the buffer length
+  read_index < 0 ? (
+    read_index = bbd_buffer_length + read_index;
+  );
+
+  out = bbd_buffer[read_index];
+  out = hardclip(out, 0.18);
+  out = this.output_lpf.biquad(out, coefficients_array);
+
+  // Feedback, only when we stepped.
+  // Has to be applied to every step that was taken
+  
+  // We are using the same index here: out = bbd_buffer[read_index]
+  // Which causes DC offset at low BBD quality, low delay time and low lpf cutoff.
+  // Luckily, a simple highpass filter in the feedback fixed this problem.
+  i = 0;
+  loop(num_steps_done,
+    write_index_offset = write_index - i;
+    write_index_offset < 0 ? (
+      write_index_offset = bbd_buffer_length + write_index_offset;
+    );
+    bbd_buffer[write_index_offset] += (regen * 1.5) * out;
+
+    signal = bbd_buffer[write_index_offset];
+
+    // Highpass the feedback
+    do_hpf = 1;
+    do_hpf == 1 ? (
+      feedback_hpf += (signal - feedback_hpf) * 0.0014 /* Arbitrary HPF cutoff constant */;
+      signal_hpf = signal - feedback_hpf;
+      bbd_buffer[write_index_offset] = signal_hpf;
+    );
+
+    i += 1;
+  );
+
+  // Highpass the output
+  output_hpf += (out - output_hpf) * 0.002 /* Arbitrary HPF cutoff constant */;
+  out - output_hpf;
+);
+
+@slider
+next_param_dry_db = 10 ^ (param_dry_db / 20);
+next_param_wet_db = 10 ^ (param_wet_db / 20);
+
+// init_arrays() zeroes out the bbd buffer, so it mutes the sound for a period.
+// So, only do it when the "BBD quality" parameter changed.
+param_bbd_length != last_param_bbd_length ? (
+  init_arrays();
+  last_param_bbd_length = param_bbd_length;
+);
+get_12db_lpf_coefficients(coefficients_array, param_cutoff, lpf_Q);
+
+@block
+d_param_dry_db = (next_param_dry_db - last_param_dry_db) / samplesblock;
+d_param_wet_db = (next_param_wet_db - last_param_wet_db) / samplesblock;
+
+@sample
+delay_left = left.carbon_delay(spl0, bbd_buffer_left, param_delay, param_regen, param_modulation, 0, 1.0, coefficients_array);
+delay_right = right.carbon_delay(spl1, bbd_buffer_right, param_delay, param_regen, param_modulation, $pi/2 /* modulation phase offset */, 1.6 /* modulation speed multiplier */, coefficients_array);
+
+// Mix
+effective_dry = last_param_dry_db;
+effective_dry <= 0.0000101 ? (
+  effective_dry = 0; // Mute
+);
+
+effective_wet = last_param_wet_db;
+effective_wet <= 0.0000101 ? (
+  effective_wet = 0; // Mute
+);
+
+spl0 = effective_dry * spl0 + effective_wet * delay_left;
+spl1 = effective_dry * spl1 + effective_wet * delay_right;
+
+last_param_dry_db += d_param_dry_db;
+last_param_wet_db += d_param_wet_db;
