@@ -145,6 +145,7 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   );
 
   speed = 1 / delay; // Divide by zero is fine, since inf will hit the speed cap above
+  speed *= tempo / 120;
   step_clock -= speed / srate;
 
   read_index = write_index - bbd_buffer_length/2; // Has to be half the buffer length
