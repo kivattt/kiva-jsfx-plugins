@@ -83,6 +83,18 @@ function biquad(sample, coefficients_array) instance(x2, x3, y2, y3) (
   out;
 );
 
+function srate_scale(samplerate) (
+  samplerate % 11025 /* 44100 / 4, lowest common divisor */ == 0 ? (
+    out = samplerate / 44100;
+  ) : (
+    out = samplerate / 48000;
+  );
+
+  out;
+);
+
+our_srate_scale = srate_scale(srate);
+
 function hardclip(sample, threshold) (
   out = sample;
   out > threshold ? (
@@ -120,10 +132,16 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
 
   step_clock_high = 1 / bbd_buffer_length;
 
-  out = 0;
+  // The higher the step limit, the better we can support high samplerates sounding the same at super low delay times.
+  // But performance is terrible at high step limits, so I've limited it to 32.
 
-  step_limit = 20;
-  step_limit = 40;
+  // step_limit has to be a power of two,
+  // because the bbd_buffer_length multiply could become a fractional value otherwise.
+  step_limit = 32; // at 44.1khz/48khz and bbd_buffer_length == 16384
+  step_limit /= our_srate_scale; // Lower for higher samplerates
+  step_limit *= bbd_buffer_length / 16384; // Lower for lower bbd_buffer_length
+  step_limit = max(1, step_limit);
+
   num_steps_done = 0;
   while (step_clock <= 0 && num_steps_done < step_limit /* To avoid infinite loop, crashing REAPER */) (
     num_steps_done += 1;
@@ -140,11 +158,12 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
     step_clock += step_clock_high; // Reset the clock (carry)
   );
 
+  // Reset the clock (no carry)
   num_steps_done >= step_limit ? (
     step_clock = step_clock_high;
   );
 
-  speed = 1 / delay; // Divide by zero is fine, since inf will hit the speed cap above
+  speed = 1 / delay; // Divide by zero is fine, since inf will hit the step_limit above.
   speed *= tempo / 120;
   step_clock -= speed / srate;
 
@@ -159,10 +178,6 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
 
   // Feedback, only when we stepped.
   // Has to be applied to every step that was taken
-  
-  // We are using the same index here: out = bbd_buffer[read_index]
-  // Which causes DC offset at low BBD quality, low delay time and low lpf cutoff.
-  // Luckily, a simple highpass filter in the feedback fixed this problem.
   i = 0;
   loop(num_steps_done,
     write_index_offset = write_index - i;
@@ -174,18 +189,19 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
     signal = bbd_buffer[write_index_offset];
 
     // Highpass the feedback
-    do_hpf = 1;
-    do_hpf == 1 ? (
-      feedback_hpf += (signal - feedback_hpf) * 0.0014 /* Arbitrary HPF cutoff constant */;
-      signal_hpf = signal - feedback_hpf;
-      bbd_buffer[write_index_offset] = signal_hpf;
-    );
+    cutoff_constant = 62; // Arbitrary HPF cutoff constant
+    cutoff_constant /= srate;
+    cutoff_constant /= num_steps_done; // Need to divide by this "samplerate" aswell.
+    
+    feedback_hpf += (signal - feedback_hpf) * cutoff_constant;
+    signal_hpf = signal - feedback_hpf;
+    bbd_buffer[write_index_offset] = signal_hpf;
 
     i += 1;
   );
 
   // Highpass the output
-  output_hpf += (out - output_hpf) * 0.002 /* Arbitrary HPF cutoff constant */;
+  output_hpf += (out - output_hpf) * (0.002 / srate) /* Arbitrary HPF cutoff constant */;
   out - output_hpf;
 );
 
