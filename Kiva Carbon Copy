@@ -83,7 +83,7 @@ function biquad(sample, coefficients_array) instance(x2, x3, y2, y3) (
   out;
 );
 
-function srate_scale(samplerate) (
+function get_srate_scale(samplerate) (
   samplerate % 11025 /* 44100 / 4, lowest common divisor */ == 0 ? (
     out = samplerate / 44100;
   ) : (
@@ -93,7 +93,7 @@ function srate_scale(samplerate) (
   out;
 );
 
-our_srate_scale = srate_scale(srate);
+our_srate_scale = get_srate_scale(srate);
 
 function hardclip(sample, threshold) (
   out = sample;
@@ -108,7 +108,7 @@ function hardclip(sample, threshold) (
   out;
 );
 
-function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array) instance(step_clock, read_index, write_index, mod_lfo, feedback_hpf, output_hpf) (
+function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array, srate_scale) instance(step_clock, read_index, write_index, mod_lfo, feedback_hpf, output_hpf) (
   mod_lfo += 1 / srate;
   mod_lfo >= 1.0 ? (
     mod_lfo -= 1.0;
@@ -138,7 +138,7 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   // step_limit has to be a power of two,
   // because the bbd_buffer_length multiply could become a fractional value otherwise.
   step_limit = 32; // at 44.1khz/48khz and bbd_buffer_length == 16384
-  step_limit /= our_srate_scale; // Lower for higher samplerates
+  step_limit /= srate_scale; // Lower for higher samplerates
   step_limit *= bbd_buffer_length / 16384; // Lower for lower bbd_buffer_length
   step_limit = max(1, step_limit);
 
@@ -222,8 +222,8 @@ d_param_dry_db = (next_param_dry_db - last_param_dry_db) / samplesblock;
 d_param_wet_db = (next_param_wet_db - last_param_wet_db) / samplesblock;
 
 @sample
-delay_left = left.carbon_delay(spl0, bbd_buffer_left, param_delay, param_regen, param_modulation, 0, 1.0, coefficients_array);
-delay_right = right.carbon_delay(spl1, bbd_buffer_right, param_delay, param_regen, param_modulation, $pi/2 /* modulation phase offset */, 1.6 /* modulation speed multiplier */, coefficients_array);
+delay_left = left.carbon_delay(spl0, bbd_buffer_left, param_delay, param_regen, param_modulation, 0, 1.0, coefficients_array, our_srate_scale);
+delay_right = right.carbon_delay(spl1, bbd_buffer_right, param_delay, param_regen, param_modulation, $pi/2 /* modulation phase offset */, 1.6 /* modulation speed multiplier */, coefficients_array, our_srate_scale);
 
 // Mix
 effective_dry = last_param_dry_db;
