@@ -108,7 +108,7 @@ function hardclip(sample, threshold) (
   out;
 );
 
-function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array, srate_scale) instance(step_clock, read_index, write_index, mod_lfo, feedback_hpf, output_hpf) (
+function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array, srate_scale) instance(step_clock, read_index, write_index, mod_lfo, feedback_hpf, output_hpf, spl_index) (
   mod_lfo += 1 / srate;
   mod_lfo >= 1.0 ? (
     mod_lfo -= 1.0;
@@ -140,23 +140,27 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   step_limit = 32; // at 44.1khz/48khz and bbd_buffer_length == 16384
   step_limit /= srate_scale; // Lower for higher samplerates
   step_limit *= bbd_buffer_length / 16384; // Lower for lower bbd_buffer_length
-  step_limit = max(1, step_limit);
+  step_limit_min_one = min(1.0, step_limit);
 
   num_steps_done = 0;
-  while (step_clock <= 0 && num_steps_done < step_limit /* To avoid infinite loop, crashing REAPER */) (
-    num_steps_done += 1;
 
-    // Need to increment the write_index before writing,
-    // otherwise the output will be delayed the whole buffer length.
-    write_index += 1;
-    write_index >= bbd_buffer_length ? (
-      write_index = 0;
+  spl_index % (1 / step_limit_min_one) == 0 ? (
+    while (step_clock <= 0 && num_steps_done < step_limit /* To avoid infinite loop, crashing REAPER */) (
+      num_steps_done += 1;
+  
+      // Need to increment the write_index before writing,
+      // otherwise the output will be delayed the whole buffer length.
+      write_index += 1;
+      write_index >= bbd_buffer_length ? (
+        write_index = 0;
+      );
+  
+      bbd_buffer[write_index] = sample;
+  
+      step_clock += step_clock_high; // Reset the clock (carry)
     );
-
-    bbd_buffer[write_index] = sample;
-
-    step_clock += step_clock_high; // Reset the clock (carry)
   );
+  spl_index += 1;
 
   // Reset the clock (no carry)
   num_steps_done >= step_limit ? (
