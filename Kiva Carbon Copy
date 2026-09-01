@@ -23,7 +23,8 @@ lpf_Q = 1 / sqrt(2);
 last_param_bbd_length = param_bbd_length;
 
 function init_arrays() (
-  bbd_buffer_length = pow(2, 10 + param_bbd_length);
+  bbd_length_min_log2 = 10; // log2(1024)
+  bbd_buffer_length = pow(2, bbd_length_min_log2 + param_bbd_length);
 
   // Array pointers
   coefficients_array = 0; // Length: 6
@@ -127,11 +128,7 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   num_steps = this.get_num_steps(srate, speed);
 
   loop(num_steps,
-    write_index += 1;
-    write_index >= bbd_buffer_length ? (
-      write_index = 0;
-    );
-
+    write_index = (write_index + 1) % bbd_buffer_length;
     bbd_buffer[write_index] = sample;
   );
 
@@ -148,10 +145,8 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   // Has to be applied to every step that was taken
   i = 0;
   loop(num_steps,
-    write_index_offset = write_index - i;
-    write_index_offset < 0 ? (
-      write_index_offset = bbd_buffer_length + write_index_offset;
-    );
+    write_index_offset = (write_index - i) % bbd_buffer_length;
+
     bbd_buffer[write_index_offset] += (regen * 1.5) * out;
 
     signal = bbd_buffer[write_index_offset];
