@@ -4,8 +4,11 @@ slider1:num_allpass_filters=40<0,200,1>Number of allpass filters
 slider2:freq=1000<20,20000,1:log>Frequency (hertz)
 slider3:Q=0.707<0.01,16.0,0.01:log>Q
 slider4:order=2<1,2,1>Filter order (1st ignores Q)
+slider5:f_spread=0<0,20000,0.00001>Freq. spread (hertz)
+slider6:param_q_spread=0<0,4,0.00001>Q spread
+slider7:offset=0<-0.9,0.9,0.001>Offset (DEBUGGING)
 
-slider6:gain_db=0<-20,12,1>gain (dB)
+slider8:gain_db=0<-20,12,1>gain (dB)
 
 in_pin:left input
 in_pin:right input
@@ -15,10 +18,13 @@ out_pin:right output
 @init
 last_gain=10^(gain_db/20);
 
+max_num_allpass_filters = 200; // Same as parameter maximum
 allpass_filter_states_array = 0;
+//allpass_filter_coefficients_array = 4 * max_num_allpass_filters;
+allpass_filter_coefficients_array = 8 * max_num_allpass_filters; // IDK why this has to be 8 when allpass_filter_states_array is just using 4 elements
 
 // Calculates the coefficients for a 1st order allpass filter
-function get_1st_order_apf_coefficients(cutoff_hertz, Q) (
+function get_1st_order_apf_coefficients(coefficients_ptr, cutoff_hertz, Q) (
   K = tan($pi * cutoff_hertz / srate);
   norm = 1.0 / (1.0 + K/Q + K*K);
 
@@ -28,10 +34,17 @@ function get_1st_order_apf_coefficients(cutoff_hertz, Q) (
   this.b0 = 1.0;
   this.b1 = -this.a0;
   this.b2 = 0.0;
+
+  coefficients_ptr[0] = this.a0;
+  coefficients_ptr[1] = this.a1;
+  coefficients_ptr[2] = this.a2;
+  coefficients_ptr[3] = this.b0;
+  coefficients_ptr[4] = this.b1;
+  coefficients_ptr[5] = this.b2;
 );
 
 // Calculates the coefficients for a 2nd order allpass filter
-function get_2nd_order_apf_coefficients(cutoff_hertz, Q) (
+function get_2nd_order_apf_coefficients(coefficients_ptr, cutoff_hertz, Q) (
   K = tan($pi * cutoff_hertz / srate);
   norm = 1.0 / (1.0 + K/Q + K*K);
 
@@ -41,22 +54,87 @@ function get_2nd_order_apf_coefficients(cutoff_hertz, Q) (
   this.b0 = 1.0;
   this.b1 = this.a1;
   this.b2 = this.a0;
+
+  coefficients_ptr[0] = this.a0;
+  coefficients_ptr[1] = this.a1;
+  coefficients_ptr[2] = this.a2;
+  coefficients_ptr[3] = this.b0;
+  coefficients_ptr[4] = this.b1;
+  coefficients_ptr[5] = this.b2;
 );
 
-order == 1 ? ( // 1st order
-  apf.get_1st_order_apf_coefficients(freq, Q);
-) : ( // 2nd order
-  apf.get_2nd_order_apf_coefficients(freq, Q);
+function calculate_coefficients() (
+  f_spread == 0 ? ( // No spread, single freq. for all filters.
+    // Zero out all the coefficients first
+    i = 0;
+    loop(num_allpass_filters,
+      allpass_filter_coefficients_array[i+0] = 0;
+      allpass_filter_coefficients_array[i+6] = 0;
+      i += 6*2;
+    );
+
+    order == 1 ? ( // 1st order
+      apf.get_1st_order_apf_coefficients(allpass_filter_coefficients_array, freq, Q);
+    ) : ( // 2nd order
+      apf.get_2nd_order_apf_coefficients(allpass_filter_coefficients_array, freq, Q);
+    );
+  ) : ( // Spread freq. per filter
+    i = 0;
+    spread_idx = 0;
+    loop(num_allpass_filters,
+      around_zero = (spread_idx/num_allpass_filters - 0.5 + offset);
+    
+      up_freq_spread = freq + f_spread * around_zero;
+      up_freq_spread = max(50, up_freq_spread);
+      up_freq_spread = min(20000, up_freq_spread);
+
+      down_freq_spread = freq - f_spread * around_zero;
+      down_freq_spread = max(50, down_freq_spread);
+      down_freq_spread = min(20000, down_freq_spread);
+      
+      Q_spread = Q + param_q_spread * around_zero;
+      Q_spread = max(0.1, Q_spread);
+      Q_spread = min(18.0, Q_spread);
+
+      l_freq_spread = up_freq_spread;
+      r_freq_spread = down_freq_spread;
+
+      spread_idx % 2 == 0 ? (
+        l_freq_spread = down_freq_spread;
+        r_freq_spread = up_freq_spread;
+      );
+
+      order == 1 ? ( // 1st order
+        apf.get_1st_order_apf_coefficients(allpass_filter_coefficients_array + i+0, l_freq_spread, Q_spread);
+        apf.get_1st_order_apf_coefficients(allpass_filter_coefficients_array + i+6, r_freq_spread, Q_spread);
+      ) : ( // 2nd order
+        apf.get_2nd_order_apf_coefficients(allpass_filter_coefficients_array + i+0, l_freq_spread, Q_spread);
+        apf.get_2nd_order_apf_coefficients(allpass_filter_coefficients_array + i+6, r_freq_spread, Q_spread);
+      );
+      
+      i += 6 * 2;
+      spread_idx += 1;
+    );
+  );
 );
 
-function biquad(sample, state_ptr) /*local(x2, x3, y2, y3)*/ (
+calculate_coefficients();
+
+function biquad(sample, coefficients_ptr, state_ptr) /*local(x2, x3, y2, y3)*/ (
   // x1 and y1 don't need to be stored as state
-  a0 = this.a0;
+  /*a0 = this.a0;
   a1 = this.a1;
   a2 = this.a2;
   b0 = this.b0;
   b1 = this.b1;
-  b2 = this.b2;
+  b2 = this.b2;*/
+  
+  a0 = coefficients_ptr[0];
+  a1 = coefficients_ptr[1];
+  a2 = coefficients_ptr[2];
+  b0 = coefficients_ptr[3];
+  b1 = coefficients_ptr[4];
+  b2 = coefficients_ptr[5];
   
   x2 = state_ptr[0];
   x3 = state_ptr[1];
@@ -81,14 +159,21 @@ function biquad(sample, state_ptr) /*local(x2, x3, y2, y3)*/ (
   out;
 );
 
+function clip(sample, threshold) (
+  out = sample;
+  out > threshold ? (
+    out = threshold;
+  );
+  
+  out < -threshold ? (
+    out = -threshold;
+  );
+  out;
+);
+
 @slider
 next_gain=10^(gain_db/20);
-
-order == 1 ? ( // 1st order
-  apf.get_1st_order_apf_coefficients(freq, Q);
-) : ( // 2nd order
-  apf.get_2nd_order_apf_coefficients(freq, Q);
-);
+calculate_coefficients();
 
 @block
 d_gain = (next_gain - last_gain)/samplesblock;
@@ -96,15 +181,30 @@ d_gain = (next_gain - last_gain)/samplesblock;
 @sample
 
 i = 0;
-loop(num_allpass_filters,
-  spl0 = apf.biquad(spl0, allpass_filter_states_array + i+0);
-  spl1 = apf.biquad(spl1, allpass_filter_states_array + i+4);
+j = 0;
 
-  i += 8; // Next set of state
+f_spread == 0 ? (
+  loop(num_allpass_filters,
+    spl0 = apf.biquad(spl0, allpass_filter_coefficients_array, allpass_filter_states_array + i+0);
+    spl1 = apf.biquad(spl1, allpass_filter_coefficients_array, allpass_filter_states_array + i+4);
+
+    i += 4 * 2; // Next set of state
+  );
+) : (
+  loop(num_allpass_filters,
+    spl0 = apf.biquad(spl0, allpass_filter_coefficients_array + j+0, allpass_filter_states_array + i+0);
+    spl1 = apf.biquad(spl1, allpass_filter_coefficients_array + j+6, allpass_filter_states_array + i+4);
+
+    i += 4 * 2; // Next set of state
+    j += 6 * 2; // Next set of coefficients
+  );
 );
 
 spl0 *= last_gain;
 spl1 *= last_gain;
+
+spl0 = clip(spl0, 0.3);
+spl1 = clip(spl1, 0.3);
 
 last_gain += d_gain;
 
