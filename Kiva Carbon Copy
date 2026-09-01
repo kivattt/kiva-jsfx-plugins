@@ -62,6 +62,17 @@ function get_12db_lpf_coefficients(coefficients_array, cutoff_hertz, Q) (
 
 get_12db_lpf_coefficients(coefficients_array, param_cutoff, lpf_Q);
 
+function fmod(a, b) (
+  a - floor(a / b) * b;
+);
+
+function get_num_steps(samplerate, speed) instance(state) (
+  state += speed / samplerate;
+  out = floor(state);
+  state = fmod(state, 1);
+  out;
+);
+
 function biquad(sample, coefficients_array) instance(x2, x3, y2, y3) (
   a0 = coefficients_array[0];
   a1 = coefficients_array[1];
@@ -83,18 +94,6 @@ function biquad(sample, coefficients_array) instance(x2, x3, y2, y3) (
   out;
 );
 
-function get_srate_scale(samplerate) (
-  samplerate % 11025 /* 44100 / 4, lowest common divisor */ == 0 ? (
-    out = samplerate / 44100;
-  ) : (
-    out = samplerate / 48000;
-  );
-
-  out;
-);
-
-our_srate_scale = get_srate_scale(srate);
-
 function hardclip(sample, threshold) (
   out = sample;
   out > threshold ? (
@@ -108,16 +107,9 @@ function hardclip(sample, threshold) (
   out;
 );
 
-function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array, srate_scale) instance(step_clock, read_index, write_index, mod_lfo, feedback_hpf, output_hpf, spl_index) (
+function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array) instance(read_index, write_index, mod_lfo, feedback_hpf, output_hpf) (
   mod_lfo += 1 / srate;
-  mod_lfo >= 1.0 ? (
-    mod_lfo -= 1.0;
-
-    // For safety
-    mod_lfo >= 1.0 ? (
-      mod_lfo = 0.0;
-    );
-  );
+  mod_lfo = fmod(mod_lfo, 1.0);
 
   modulation = 0;
   modulation_enable != 0 ? (
@@ -130,46 +122,18 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
 
   sample = this.input_lpf.biquad(sample, coefficients_array);
 
-  step_clock_high = 1 / bbd_buffer_length;
+  speed = (1 / max(0.00001, delay)) * (tempo/120) * bbd_buffer_length;
+  speed = min(128 * bbd_buffer_length, speed);
+  num_steps = this.get_num_steps(srate, speed);
 
-  // The higher the step limit, the better we can support high samplerates sounding the same at super low delay times.
-  // But performance is terrible at high step limits, so I've limited it to 32.
-
-  // step_limit has to be a power of two,
-  // because the bbd_buffer_length multiply could become a fractional value otherwise.
-  step_limit = 32; // at 44.1khz/48khz and bbd_buffer_length == 16384
-  step_limit /= srate_scale; // Lower for higher samplerates
-  step_limit *= bbd_buffer_length / 16384; // Lower for lower bbd_buffer_length
-  step_limit_min_one = min(1.0, step_limit);
-
-  num_steps_done = 0;
-
-  spl_index % (1 / step_limit_min_one) == 0 ? (
-    while (step_clock <= 0 && num_steps_done < step_limit /* To avoid infinite loop, crashing REAPER */) (
-      num_steps_done += 1;
-  
-      // Need to increment the write_index before writing,
-      // otherwise the output will be delayed the whole buffer length.
-      write_index += 1;
-      write_index >= bbd_buffer_length ? (
-        write_index = 0;
-      );
-  
-      bbd_buffer[write_index] = sample;
-  
-      step_clock += step_clock_high; // Reset the clock (carry)
+  loop(num_steps,
+    write_index += 1;
+    write_index >= bbd_buffer_length ? (
+      write_index = 0;
     );
-  );
-  spl_index += 1;
 
-  // Reset the clock (no carry)
-  num_steps_done >= step_limit ? (
-    step_clock = step_clock_high;
+    bbd_buffer[write_index] = sample;
   );
-
-  speed = 1 / delay; // Divide by zero is fine, since inf will hit the step_limit above.
-  speed *= tempo / 120;
-  step_clock -= speed / srate;
 
   read_index = write_index - bbd_buffer_length/2; // Has to be half the buffer length
   read_index < 0 ? (
@@ -183,7 +147,7 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   // Feedback, only when we stepped.
   // Has to be applied to every step that was taken
   i = 0;
-  loop(num_steps_done,
+  loop(num_steps,
     write_index_offset = write_index - i;
     write_index_offset < 0 ? (
       write_index_offset = bbd_buffer_length + write_index_offset;
@@ -195,8 +159,8 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
     // Highpass the feedback
     cutoff_constant = 62; // Arbitrary HPF cutoff constant
     cutoff_constant /= srate;
-    cutoff_constant /= num_steps_done; // Need to divide by this "samplerate" aswell.
-    
+    cutoff_constant /= num_steps; // Need to divide by this "samplerate" aswell.
+
     feedback_hpf += (signal - feedback_hpf) * cutoff_constant;
     signal_hpf = signal - feedback_hpf;
     bbd_buffer[write_index_offset] = signal_hpf;
@@ -226,8 +190,8 @@ d_param_dry_db = (next_param_dry_db - last_param_dry_db) / samplesblock;
 d_param_wet_db = (next_param_wet_db - last_param_wet_db) / samplesblock;
 
 @sample
-delay_left = left.carbon_delay(spl0, bbd_buffer_left, param_delay, param_regen, param_modulation, 0, 1.0, coefficients_array, our_srate_scale);
-delay_right = right.carbon_delay(spl1, bbd_buffer_right, param_delay, param_regen, param_modulation, $pi/2 /* modulation phase offset */, 1.6 /* modulation speed multiplier */, coefficients_array, our_srate_scale);
+delay_left = left.carbon_delay(spl0, bbd_buffer_left, param_delay, param_regen, param_modulation, 0, 1.0, coefficients_array);
+delay_right = right.carbon_delay(spl1, bbd_buffer_right, param_delay, param_regen, param_modulation, $pi/2 /* modulation phase offset */, 1.6 /* modulation speed multiplier */, coefficients_array);
 
 // Mix
 effective_dry = last_param_dry_db;
