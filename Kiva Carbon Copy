@@ -123,7 +123,7 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   sample = this.input_lpf.biquad(sample, coefficients_array);
 
   speed = (1 / max(0.00001, delay)) * (tempo/120) * bbd_buffer_length;
-  speed = min(128 * bbd_buffer_length, speed);
+  speed = min(32 * bbd_buffer_length, speed);
   num_steps = this.get_num_steps(srate, speed);
 
   loop(num_steps,
