@@ -26,10 +26,20 @@ function init_arrays() (
   bbd_length_min_log2 = 10; // log2(1024)
   bbd_buffer_length = pow(2, bbd_length_min_log2 + param_bbd_length);
 
-  // Array pointers
-  coefficients_array = 0; // Length: 6
-  bbd_buffer_left = 6; // Length: bbd_buffer_length
-  bbd_buffer_right = 6 + bbd_buffer_length; // Length: bbd_buffer_length
+  /* Array pointers */
+    ptr = 0;
+
+    // Length: 6
+    coefficients_array = ptr;
+    ptr += 6;
+
+    // Length: bbd_buffer_length
+    bbd_buffer_left = ptr;
+    ptr += bbd_buffer_length;
+
+    // Length: bbd_buffer_length
+    bbd_buffer_right = ptr;
+    ptr += bbd_buffer_length;
 
   // Zero out the arrays to avoid bbd_buffer_length switching noise
   i = 0;
@@ -108,20 +118,21 @@ function hardclip(sample, threshold) (
   out;
 );
 
-function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array) instance(read_index, write_index, mod_lfo, feedback_hpf, output_hpf) (
-  mod_lfo += 1 / srate;
-  mod_lfo = fmod(mod_lfo, 1.0);
+function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array) instance(read_index, write_index, lfo_saw_1sec, feedback_peak_lpf, feedback_hpf, output_hpf) (
+  lfo_saw_1sec += 1 / srate;
+  lfo_saw_1sec = fmod(lfo_saw_1sec, 1.0);
 
   modulation = 0;
   modulation_enable != 0 ? (
     // I want the modulation speed not to line up with the track BPM
     magic_irrational_number = 2.4579160475349087; // Hardcoded modulation speed
-    modulation = sin(modulation_phase_offset + mod_lfo / (magic_irrational_number * modulation_speed_mul));
+    modulation = sin(modulation_phase_offset + lfo_saw_1sec / (magic_irrational_number * modulation_speed_mul));
     delay += 0.01 * modulation; // Hardcoded modulation amount
     delay = max(0, delay); // Since modulation can offset negative, prevent negative delay value.
   );
 
-  sample = this.input_lpf.biquad(sample, coefficients_array);
+  // Lowpass the input
+  sample_lpf = this.input_lpf.biquad(sample, coefficients_array);
 
   speed = (1 / max(0.00001, delay)) * (tempo/120) * bbd_buffer_length;
   speed = min(32 * bbd_buffer_length, speed);
@@ -129,7 +140,7 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
 
   loop(num_steps,
     write_index = (write_index + 1) % bbd_buffer_length;
-    bbd_buffer[write_index] = sample;
+    bbd_buffer[write_index] = sample_lpf;
   );
 
   read_index = write_index - bbd_buffer_length/2; // Has to be half the buffer length
@@ -141,30 +152,35 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   out = hardclip(out, 0.18);
   out = this.output_lpf.biquad(out, coefficients_array);
 
-  // Feedback, only when we stepped.
-  // Has to be applied to every step that was taken
-  i = 0;
-  loop(num_steps,
-    write_index_offset = (write_index - i) % bbd_buffer_length;
+  // FIXME: This feedback peak detector should affect both left and right at the same time.
+  feedback_peak = abs(bbd_buffer[write_index] + regen*1.5*out);
+  /* Lowpass the feedback_peak */
+  feedback_peak_lpf += (feedback_peak - feedback_peak_lpf) * (44 / srate); // Arbitrary LPF cutoff
 
-    bbd_buffer[write_index_offset] += (regen * 1.5) * out;
-
-    signal = bbd_buffer[write_index_offset];
-
-    // Highpass the feedback
-    cutoff_constant = 62; // Arbitrary HPF cutoff constant
-    cutoff_constant /= srate;
-    cutoff_constant /= num_steps; // Need to divide by this "samplerate" aswell.
-
-    feedback_hpf += (signal - feedback_hpf) * cutoff_constant;
-    signal_hpf = signal - feedback_hpf;
-    bbd_buffer[write_index_offset] = signal_hpf;
-
-    i += 1;
+  // We only feedback if the feedback signal is above a certain level (around -64dB)
+  // This is to prevent self-oscillation when very low or no input signal is input.
+  feedback_peak_lpf > 0.0005 /* about -64dB for lpf param at 20khz */ ? (
+    i = 0;
+    loop(num_steps,
+      write_index_offset = (write_index - i) % bbd_buffer_length;
+  
+      feedback_signal = bbd_buffer[write_index_offset] + (regen * 1.5) * out;
+  
+      // Highpass the feedback
+      cutoff_constant = 62; // Arbitrary HPF cutoff constant
+      cutoff_constant /= srate;
+      cutoff_constant /= num_steps; // Need to divide by this "samplerate" aswell.
+  
+      feedback_hpf += (feedback_signal - feedback_hpf) * cutoff_constant;
+      feedback_signal_hpf = feedback_signal - feedback_hpf;
+  
+      bbd_buffer[write_index_offset] = feedback_signal_hpf;
+      i += 1;
+    );
   );
 
   // Highpass the output
-  output_hpf += (out - output_hpf) * (0.002 / srate) /* Arbitrary HPF cutoff constant */;
+  output_hpf += (out - output_hpf) * (0.002 /* Arbitrary HPF cutoff constant */ / srate);
   out - output_hpf;
 );
 
