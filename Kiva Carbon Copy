@@ -84,43 +84,25 @@ function get_num_steps(samplerate, speed) instance(state) (
   out;
 );
 
-function biquad(sample, coefficients_array) instance(x2, x3, y2, y3) (
-  a0 = coefficients_array[0];
-  a1 = coefficients_array[1];
-  a2 = coefficients_array[2];
-  b0 = coefficients_array[3];
-  b1 = coefficients_array[4];
-  b2 = coefficients_array[5];
-
-  x1 = sample;
-
-  y1 = a0*x1 + a1*x2 + a2*x3
-    - b1*y2 - b2*y3;
+function biquad(sample, c /* coefficients array */) instance(x2, x3, y2, y3) (
+  out = c[0]*sample + c[1]*x2 + c[2]*x3 - c[4]*y2 - c[5]*y3;
   x3 = x2;
-  x2 = x1;
+  x2 = sample;
   y3 = y2;
-  y2 = y1;
-  out = y1;
-
+  y2 = out;
   out;
 );
 
 function hardclip(sample, threshold) (
-  out = sample;
-  out > threshold ? (
-    out = threshold;
-  );
-
-  out < -threshold ? (
-    out = -threshold;
-  );
-
-  out;
+  max(-threshold, min(threshold, sample));
 );
 
 function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modulation_phase_offset, modulation_speed_mul, coefficients_array) instance(read_index, write_index, lfo_saw_1sec, feedback_peak_lpf, feedback_hpf, output_hpf) (
+ST_PERF_MODULATION_start = time_precise();
   lfo_saw_1sec += 1 / srate;
-  lfo_saw_1sec = fmod(lfo_saw_1sec, 1.0);
+  lfo_saw_1sec >= 1.0 ? (
+    lfo_saw_1sec = fmod(lfo_saw_1sec, 1.0);
+  );
 
   modulation = 0;
   modulation_enable != 0 ? (
@@ -130,7 +112,9 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
     delay += 0.01 * modulation; // Hardcoded modulation amount
     delay = max(0, delay); // Since modulation can offset negative, prevent negative delay value.
   );
+PERF_MODULATION_duration = srate * (time_precise() - ST_PERF_MODULATION_start);
 
+ST_PERF_WRITE_LOOP_start = time_precise();
   // Lowpass the input
   sample_lpf = this.input_lpf.biquad(sample, coefficients_array);
 
@@ -147,7 +131,9 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   read_index < 0 ? (
     read_index = bbd_buffer_length + read_index;
   );
+PERF_WRITE_LOOP_duration = srate * (time_precise() - ST_PERF_WRITE_LOOP_start);
 
+ST_PERF_DIST_LPF_start = time_precise();
   out = bbd_buffer[read_index];
   out = hardclip(out, 0.18);
   out = this.output_lpf.biquad(out, coefficients_array);
@@ -156,32 +142,42 @@ function carbon_delay(sample, bbd_buffer, delay, regen, modulation_enable, modul
   feedback_peak = abs(bbd_buffer[write_index] + regen*1.5*out);
   /* Lowpass the feedback_peak */
   feedback_peak_lpf += (feedback_peak - feedback_peak_lpf) * (44 / srate); // Arbitrary LPF cutoff
+PERF_DIST_LPF_duration = srate * (time_precise() - ST_PERF_DIST_LPF_start);
+
+ST_PERF_FEEDBACK_start = time_precise();
 
   // We only feedback if the feedback signal is above a certain level (around -64dB)
   // This is to prevent self-oscillation when very low or no input signal is input.
   feedback_peak_lpf > 0.0005 /* about -64dB for lpf param at 20khz */ ? (
+    mul = regen * 1.5;
+    cutoff_constant = 62 / srate;// Arbitrary HPF cutoff constant
+
     i = 0;
     loop(num_steps,
-      write_index_offset = (write_index - i) % bbd_buffer_length;
+      //write_index_offset = (write_index - i) % bbd_buffer_length;
+      write_index_offset = write_index - i;
+      write_index_offset < 0 ? (
+        write_index_offset += bbd_buffer_length;
+      );
   
-      feedback_signal = bbd_buffer[write_index_offset] + (regen * 1.5) * out;
+      feedback_signal = bbd_buffer[write_index_offset] + mul * out;
   
       // Highpass the feedback
-      cutoff_constant = 62; // Arbitrary HPF cutoff constant
-      cutoff_constant /= srate;
-      cutoff_constant /= num_steps; // Need to divide by this "samplerate" aswell.
-  
-      feedback_hpf += (feedback_signal - feedback_hpf) * cutoff_constant;
-      feedback_signal_hpf = feedback_signal - feedback_hpf;
-  
-      bbd_buffer[write_index_offset] = feedback_signal_hpf;
+      feedback_hpf += (feedback_signal - feedback_hpf) * cutoff_constant / num_steps;
+      bbd_buffer[write_index_offset] = feedback_signal - feedback_hpf;
       i += 1;
     );
   );
 
+PERF_FEEDBACK_duration = srate * (time_precise() - ST_PERF_FEEDBACK_start);
+
+ST_PERF_LAST_start = time_precise();
   // Highpass the output
   output_hpf += (out - output_hpf) * (0.002 /* Arbitrary HPF cutoff constant */ / srate);
-  out - output_hpf;
+  thing = out - output_hpf;
+PERF_LAST_duration = srate * (time_precise() - ST_PERF_LAST_start);
+
+  thing;
 );
 
 @slider
@@ -201,8 +197,14 @@ d_param_dry_db = (next_param_dry_db - last_param_dry_db) / samplesblock;
 d_param_wet_db = (next_param_wet_db - last_param_wet_db) / samplesblock;
 
 @sample
+
+ST_PERF_OVERALL_LEFT_start = time_precise();
 delay_left = left.carbon_delay(spl0, bbd_buffer_left, param_delay, param_regen, param_modulation, 0, 1.0, coefficients_array);
+PERF_OVERALL_LEFT_duration = srate * (time_precise() - ST_PERF_OVERALL_LEFT_start);
+
+ST_PERF_OVERALL_RIGHT_start = time_precise();
 delay_right = right.carbon_delay(spl1, bbd_buffer_right, param_delay, param_regen, param_modulation, $pi/2 /* modulation phase offset */, 1.6 /* modulation speed multiplier */, coefficients_array);
+PERF_OVERALL_RIGHT_duration = srate * (time_precise() - ST_PERF_OVERALL_RIGHT_start);
 
 // Mix
 effective_dry = last_param_dry_db;
